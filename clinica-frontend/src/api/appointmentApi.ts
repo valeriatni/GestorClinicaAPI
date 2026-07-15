@@ -232,8 +232,7 @@ Promise<Appointment[]> {
 }
 
 
-export async function
-getAppointmentSpecialists():
+export async function getAppointmentSpecialists():
 Promise<AppointmentSpecialist[]> {
   const response = await fetch(
     `${API_BASE_URL}/api/specialists/` +
@@ -429,7 +428,7 @@ export async function startConsultation(
 ): Promise<Appointment> {
   return patchAppointmentAction(
     id,
-    "start-consultation",
+    "attend",
   );
 }
 
@@ -441,4 +440,33 @@ export async function finishConsultation(
     id,
     "finish-consultation",
   );
+}
+
+// Marca una cita pendiente como atendida.
+//
+// Se conecta con el método attend()
+// del AppointmentViewSet.
+export async function attendAppointment(
+  appointmentId: number,
+): Promise<Appointment> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/appointments/${appointmentId}/attend/`,
+    {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+    },
+  );
+
+  const data = await response
+    .json()
+    .catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      data?.detail ??
+        "No se pudo marcar la cita como atendida.",
+    );
+  }
+
+  return data as Appointment;
 }

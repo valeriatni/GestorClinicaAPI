@@ -1,37 +1,30 @@
 import {
   useEffect,
+  useMemo,
   useState,
   type FormEvent,
 } from "react";
 
 import type {
-  Appointment,
-} from "../../types/appointment";
-
-import type {
-  Budget,
-} from "../../types/budget";
-
-import type {
   Payment,
+  PaymentAppointment,
+  PaymentBudget,
   PaymentMethod,
   PaymentPayload,
+  PaymentProcedure,
+  PaymentTreatment,
 } from "../../types/payment";
 
-import type {
-  ProcedureOption,
-  SuggestedTreatment,
-} from "../../types/suggestedTreatment";
 
 interface PaymentModalProps {
   patientId: number;
   initialBudgetId: number | null;
   initialAppointmentId: number | null;
   payments: Payment[];
-  appointments: Appointment[];
-  budgets: Budget[];
-  treatments: SuggestedTreatment[];
-  procedures: ProcedureOption[];
+  appointments: PaymentAppointment[];
+  budgets: PaymentBudget[];
+  treatments: PaymentTreatment[];
+  procedures: PaymentProcedure[];
   isSaving: boolean;
   onClose: () => void;
 
@@ -40,9 +33,11 @@ interface PaymentModalProps {
   ) => Promise<void>;
 }
 
+
 type PaymentType =
   | "Budget"
   | "Appointment";
+
 
 interface PaymentForm {
   payment_type: PaymentType;
@@ -53,8 +48,8 @@ interface PaymentForm {
   reference_number: string;
 }
 
+
 interface FormErrors {
-  payment_type?: string;
   budget?: string;
   appointment?: string;
   amount?: string;
@@ -62,6 +57,7 @@ interface FormErrors {
   reference_number?: string;
   general?: string;
 }
+
 
 const emptyForm: PaymentForm = {
   payment_type: "Budget",
@@ -71,6 +67,90 @@ const emptyForm: PaymentForm = {
   payment_method: "Cash",
   reference_number: "",
 };
+
+
+function getRelationId(
+  relation: unknown,
+): number | null {
+  if (
+    relation === null ||
+    relation === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    typeof relation === "number" ||
+    typeof relation === "string"
+  ) {
+    const id = Number(relation);
+
+    return (
+      Number.isInteger(id) &&
+      id > 0
+        ? id
+        : null
+    );
+  }
+
+  if (
+    typeof relation === "object" &&
+    "id" in relation
+  ) {
+    const id = Number(
+      (
+        relation as {
+          id: unknown;
+        }
+      ).id,
+    );
+
+    return (
+      Number.isInteger(id) &&
+      id > 0
+        ? id
+        : null
+    );
+  }
+
+  return null;
+}
+
+
+function isBudgetUnavailable(
+  status: string,
+): boolean {
+  return [
+    "Rejected",
+    "Completed",
+    "Cancelled",
+    "Closed",
+  ].includes(status);
+}
+
+
+function getBudgetStatusText(
+  status: string,
+): string {
+  const statuses:
+    Record<string, string> = {
+      Draft: "Borrador",
+      Sent: "Enviado",
+      Accepted: "Aceptado",
+      Rejected: "Rechazado",
+      Completed: "Completado",
+
+      Approved: "Aprobado",
+      Cancelled: "Cancelado",
+      Closed: "Cerrado",
+    };
+
+  return (
+    statuses[status] ??
+    status
+  );
+}
+
 
 function formatDate(
   dateValue: string,
@@ -89,6 +169,48 @@ function formatDate(
   ).format(date);
 }
 
+
+function getProcedureForBudget(
+  budget: PaymentBudget,
+  treatments:
+    PaymentTreatment[],
+  procedures:
+    PaymentProcedure[],
+): PaymentProcedure | undefined {
+  const treatmentRelation =
+    budget.suggested_treatment;
+
+  const treatment =
+    typeof treatmentRelation ===
+    "object"
+      ? treatmentRelation
+      : treatments.find(
+          (
+            currentTreatment,
+          ) =>
+            currentTreatment.id ===
+            treatmentRelation,
+        );
+
+  if (!treatment?.procedure) {
+    return undefined;
+  }
+
+  if (
+    typeof treatment.procedure ===
+    "object"
+  ) {
+    return treatment.procedure;
+  }
+
+  return procedures.find(
+    (procedure) =>
+      procedure.id ===
+      treatment.procedure,
+  );
+}
+
+
 export default function PaymentModal({
   patientId,
   initialBudgetId,
@@ -102,102 +224,236 @@ export default function PaymentModal({
   onClose,
   onSave,
 }: PaymentModalProps) {
-  const [form, setForm] =
-    useState<PaymentForm>(emptyForm);
-
-  const [errors, setErrors] =
-    useState<FormErrors>({});
-
-  const patientBudgets = budgets.filter(
-    (budget) =>
-      budget.patient === patientId &&
-      budget.budget_status !==
-        "Cancelled",
+  const [
+    form,
+    setForm,
+  ] = useState<PaymentForm>(
+    emptyForm,
   );
 
-  const patientAppointments =
-    appointments.filter(
-      (appointment) =>
-        appointment.patient ===
-          patientId &&
-        appointment.appointment_status !==
-          "Cancelled" &&
-        appointment.appointment_status !==
-          "No Show",
+  const [
+    errors,
+    setErrors,
+  ] = useState<FormErrors>({});
+
+
+  function getBudgetPaidAmount(
+    budgetId: number,
+  ): number {
+    return payments
+      .filter(
+        (payment) =>
+          getRelationId(
+            payment.budget,
+          ) === budgetId,
+      )
+      .reduce(
+        (total, payment) =>
+          total +
+          Number(payment.amount),
+        0,
+      );
+  }
+
+
+  function getAppointmentPaidAmount(
+    appointmentId: number,
+  ): number {
+    return payments
+      .filter(
+        (payment) =>
+          getRelationId(
+            payment.appointment,
+          ) === appointmentId,
+      )
+      .reduce(
+        (total, payment) =>
+          total +
+          Number(payment.amount),
+        0,
+      );
+  }
+
+
+  const patientBudgets =
+    useMemo(
+      () =>
+        budgets.filter(
+          (budget) =>
+            getRelationId(
+              budget.patient,
+            ) === patientId &&
+            !isBudgetUnavailable(
+              budget.budget_status,
+            ) &&
+            !budget.is_deleted,
+        ),
+      [
+        budgets,
+        patientId,
+      ],
     );
+
+
+  const patientAppointments =
+    useMemo(
+      () =>
+        appointments.filter(
+          (appointment) => {
+            if (
+              getRelationId(
+                appointment.patient,
+              ) !== patientId
+            ) {
+              return false;
+            }
+
+            if (
+              appointment
+                .appointment_status ===
+                "Cancelled" ||
+              appointment
+                .appointment_status ===
+                "No Show" ||
+              appointment.is_deleted
+            ) {
+              return false;
+            }
+
+            return (
+              getAppointmentPaidAmount(
+                appointment.id,
+              ) === 0
+            );
+          },
+        ),
+      [
+        appointments,
+        payments,
+        patientId,
+      ],
+    );
+
 
   useEffect(() => {
     if (initialBudgetId) {
-      const budget = budgets.find(
-        (currentBudget) =>
-          currentBudget.id ===
-          initialBudgetId,
-      );
-
-      const paidAmount = payments
-        .filter(
-          (payment) =>
-            payment.budget ===
+      const budget =
+        patientBudgets.find(
+          (currentBudget) =>
+            currentBudget.id ===
             initialBudgetId,
-        )
-        .reduce(
-          (total, payment) =>
-            total +
-            Number(payment.amount),
-          0,
         );
 
-      const balance = budget
-        ? Number(budget.net_total) -
-          paidAmount
-        : 0;
+      if (!budget) {
+        setForm(emptyForm);
+
+        setErrors({
+          general:
+            "El presupuesto seleccionado no está disponible para este paciente.",
+        });
+
+        return;
+      }
+
+      const paidAmount =
+        getBudgetPaidAmount(
+          budget.id,
+        );
+
+      const balance =
+        Number(
+          budget.net_total,
+        ) - paidAmount;
 
       setForm({
         ...emptyForm,
-        payment_type: "Budget",
-        budget: String(
-          initialBudgetId,
-        ),
+
+        payment_type:
+          "Budget",
+
+        budget:
+          String(
+            budget.id,
+          ),
+
         amount:
           balance > 0
             ? balance.toFixed(2)
             : "",
       });
-    } else if (initialAppointmentId) {
-      setForm({
-        ...emptyForm,
-        payment_type: "Appointment",
-        appointment: String(
-          initialAppointmentId,
-        ),
-      });
-    } else {
-      setForm(emptyForm);
+
+      setErrors({});
+      return;
     }
 
+    if (initialAppointmentId) {
+      const appointment =
+        patientAppointments.find(
+          (
+            currentAppointment,
+          ) =>
+            currentAppointment.id ===
+            initialAppointmentId,
+        );
+
+      if (!appointment) {
+        setForm(emptyForm);
+
+        setErrors({
+          general:
+            "La cita seleccionada no está disponible para pago.",
+        });
+
+        return;
+      }
+
+      setForm({
+        ...emptyForm,
+
+        payment_type:
+          "Appointment",
+
+        appointment:
+          String(
+            appointment.id,
+          ),
+      });
+
+      setErrors({});
+      return;
+    }
+
+    setForm(emptyForm);
     setErrors({});
   }, [
     initialBudgetId,
     initialAppointmentId,
-    budgets,
+    patientBudgets,
+    patientAppointments,
     payments,
   ]);
+
 
   function changeField(
     field: keyof PaymentForm,
     value: string,
   ) {
-    setForm({
-      ...form,
-      [field]: value,
-    });
+    setForm(
+      (currentForm) => ({
+        ...currentForm,
+        [field]: value,
+      }),
+    );
 
-    setErrors({
-      ...errors,
-      [field]: undefined,
-      general: undefined,
-    });
+    setErrors(
+      (currentErrors) => ({
+        ...currentErrors,
+        [field]: undefined,
+        general: undefined,
+      }),
+    );
   }
+
 
   function changePaymentType(
     value: PaymentType,
@@ -210,112 +466,80 @@ export default function PaymentModal({
     setErrors({});
   }
 
+
   function selectBudget(
     budgetIdValue: string,
   ) {
-    const budgetId = Number(
-      budgetIdValue,
+    const budgetId =
+      Number(
+        budgetIdValue,
+      );
+
+    const budget =
+      patientBudgets.find(
+        (currentBudget) =>
+          currentBudget.id ===
+          budgetId,
+      );
+
+    const paidAmount =
+      budget
+        ? getBudgetPaidAmount(
+            budget.id,
+          )
+        : 0;
+
+    const balance =
+      budget
+        ? Number(
+            budget.net_total,
+          ) - paidAmount
+        : 0;
+
+    setForm(
+      (currentForm) => ({
+        ...currentForm,
+
+        budget:
+          budgetIdValue,
+
+        appointment: "",
+
+        amount:
+          balance > 0
+            ? balance.toFixed(2)
+            : "",
+      }),
     );
 
-    const budget = budgets.find(
-      (currentBudget) =>
-        currentBudget.id === budgetId,
-    );
-
-    const paidAmount = payments
-      .filter(
-        (payment) =>
-          payment.budget === budgetId,
-      )
-      .reduce(
-        (total, payment) =>
-          total + Number(payment.amount),
-        0,
-      );
-
-    const balance = budget
-      ? Number(budget.net_total) -
-        paidAmount
-      : 0;
-
-    setForm({
-      ...form,
-      budget: budgetIdValue,
-      appointment: "",
-      amount:
-        balance > 0
-          ? balance.toFixed(2)
-          : "",
-    });
-
-    setErrors({
-      ...errors,
-      budget: undefined,
-      appointment: undefined,
-      amount: undefined,
-      general: undefined,
-    });
-  }
-
-  function getBudgetPaidAmount(
-    budgetId: number,
-  ): number {
-    return payments
-      .filter(
-        (payment) =>
-          payment.budget === budgetId,
-      )
-      .reduce(
-        (total, payment) =>
-          total + Number(payment.amount),
-        0,
-      );
-  }
-
-  function getAppointmentPaidAmount(
-    appointmentId: number,
-  ): number {
-    return payments
-      .filter(
-        (payment) =>
-          payment.appointment ===
-          appointmentId,
-      )
-      .reduce(
-        (total, payment) =>
-          total + Number(payment.amount),
-        0,
-      );
-  }
-
-  function findProcedureForBudget(
-    budget: Budget,
-  ) {
-    const treatment =
-      treatments.find(
-        (currentTreatment) =>
-          currentTreatment.id ===
-          budget.suggested_treatment,
-      );
-
-    return procedures.find(
-      (procedure) =>
-        procedure.id ===
-        treatment?.procedure,
+    setErrors(
+      (currentErrors) => ({
+        ...currentErrors,
+        budget: undefined,
+        amount: undefined,
+        general: undefined,
+      }),
     );
   }
 
-  const selectedBudget = budgets.find(
-    (budget) =>
-      budget.id === Number(form.budget),
-  );
+
+  const selectedBudget =
+    patientBudgets.find(
+      (budget) =>
+        budget.id ===
+        Number(form.budget),
+    );
+
 
   const selectedAppointment =
-    appointments.find(
+    patientAppointments.find(
       (appointment) =>
         appointment.id ===
-        Number(form.appointment),
+        Number(
+          form.appointment,
+        ),
     );
+
 
   const budgetPaidAmount =
     selectedBudget
@@ -324,6 +548,7 @@ export default function PaymentModal({
         )
       : 0;
 
+
   const budgetBalance =
     selectedBudget
       ? Number(
@@ -331,48 +556,33 @@ export default function PaymentModal({
         ) - budgetPaidAmount
       : 0;
 
+
   function validateForm(): boolean {
-    const newErrors: FormErrors = {};
+    const newErrors:
+      FormErrors = {};
 
-    const amount = Number(form.amount);
+    const amount =
+      Number(form.amount);
+
     const reference =
-      form.reference_number.trim();
-
-    if (!patientId) {
-      newErrors.general =
-        "Debe seleccionar un paciente.";
-    }
+      form.reference_number
+        .trim();
 
     if (
-      form.payment_type === "Budget"
+      form.payment_type ===
+      "Budget"
     ) {
       if (!form.budget) {
         newErrors.budget =
           "Debe seleccionar un presupuesto.";
       } else if (!selectedBudget) {
         newErrors.budget =
-          "El presupuesto seleccionado no existe.";
+          "El presupuesto seleccionado no está disponible.";
       } else if (
-        selectedBudget.patient !==
-        patientId
+        budgetBalance <= 0
       ) {
         newErrors.budget =
-          "El presupuesto no pertenece al paciente seleccionado.";
-      } else if (
-        selectedBudget.budget_status ===
-        "Cancelled"
-      ) {
-        newErrors.budget =
-          "No se puede pagar un presupuesto cancelado.";
-      } else if (
-        selectedBudget.budget_status ===
-        "Closed"
-      ) {
-        newErrors.budget =
-          "Este presupuesto ya está completamente pagado y cerrado.";
-      } else if (budgetBalance <= 0) {
-        newErrors.budget =
-          "Este presupuesto no tiene saldo pendiente.";
+          "El presupuesto no tiene saldo pendiente.";
       }
     }
 
@@ -387,42 +597,23 @@ export default function PaymentModal({
         !selectedAppointment
       ) {
         newErrors.appointment =
-          "La cita seleccionada no existe.";
-      } else if (
-        selectedAppointment.patient !==
-        patientId
-      ) {
-        newErrors.appointment =
-          "La cita no pertenece al paciente seleccionado.";
-      } else if (
-        selectedAppointment
-          .appointment_status ===
-          "Cancelled"
-      ) {
-        newErrors.appointment =
-          "No se puede registrar un pago para una cita cancelada.";
-      } else if (
-        selectedAppointment
-          .appointment_status ===
-          "No Show"
-      ) {
-        newErrors.appointment =
-          "No se puede registrar un pago para una cita a la que el paciente no asistió.";
+          "La cita seleccionada no está disponible.";
       }
     }
 
     if (!form.amount) {
       newErrors.amount =
         "Debe ingresar el monto pagado.";
-    } else if (Number.isNaN(amount)) {
+    } else if (
+      Number.isNaN(amount)
+    ) {
       newErrors.amount =
         "El monto debe ser un número válido.";
-    } else if (amount <= 0) {
+    } else if (
+      amount <= 0
+    ) {
       newErrors.amount =
         "El monto debe ser mayor que cero.";
-    } else if (amount > 99999999) {
-      newErrors.amount =
-        "El monto ingresado es demasiado alto.";
     } else if (
       form.payment_type ===
         "Budget" &&
@@ -435,34 +626,35 @@ export default function PaymentModal({
         )}.`;
     }
 
-    if (!form.payment_method) {
-      newErrors.payment_method =
-        "Debe seleccionar un método de pago.";
-    }
-
     if (
-      form.payment_method !== "Cash" &&
+      form.payment_method !==
+        "Cash" &&
       !reference
     ) {
       newErrors.reference_number =
-        "Debe ingresar el número de operación o referencia.";
+        "Debe ingresar el número de referencia.";
     }
 
-    if (reference.length > 100) {
+    if (
+      reference.length > 100
+    ) {
       newErrors.reference_number =
-        "El número de referencia no puede superar los 100 caracteres.";
+        "La referencia no puede superar 100 caracteres.";
     }
 
     setErrors(newErrors);
 
     return (
-      Object.keys(newErrors).length ===
-      0
+      Object.keys(
+        newErrors,
+      ).length === 0
     );
   }
 
+
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
+    event:
+      FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
@@ -472,36 +664,40 @@ export default function PaymentModal({
       return;
     }
 
-    const paymentData: PaymentPayload =
-      {
-        budget:
-          form.payment_type ===
-          "Budget"
-            ? Number(form.budget)
-            : null,
+    const paymentData:
+      PaymentPayload = {
+      budget:
+        form.payment_type ===
+        "Budget"
+          ? Number(form.budget)
+          : null,
 
-        appointment:
-          form.payment_type ===
-          "Appointment"
-            ? Number(
-                form.appointment,
-              )
-            : null,
+      appointment:
+        form.payment_type ===
+        "Appointment"
+          ? Number(
+              form.appointment,
+            )
+          : null,
 
-        amount: Number(
+      amount:
+        Number(
           form.amount,
         ).toFixed(2),
 
-        payment_method:
-          form.payment_method,
+      payment_method:
+        form.payment_method,
 
-        reference_number:
-          form.reference_number.trim() ||
-          null,
-      };
+      reference_number:
+        form.reference_number
+          .trim() ||
+        null,
+    };
 
     try {
-      await onSave(paymentData);
+      await onSave(
+        paymentData,
+      );
     } catch (error) {
       setErrors({
         general:
@@ -512,37 +708,27 @@ export default function PaymentModal({
     }
   }
 
-  function getInputClass(
-    field: keyof FormErrors,
-  ) {
-    return `form-control ${
-      errors[field]
-        ? "is-invalid"
-        : ""
-    }`;
-  }
-
-  function getSelectClass(
-    field: keyof FormErrors,
-  ) {
-    return `form-select ${
-      errors[field]
-        ? "is-invalid"
-        : ""
-    }`;
-  }
 
   return (
     <>
       <div
         className="modal fade show d-block"
         tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        style={{
+          overflowY: "auto",
+        }}
       >
-        <div className="modal-dialog modal-lg modal-dialog-centered">
+        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <form
               onSubmit={handleSubmit}
               noValidate
+              className="d-flex flex-column"
+              style={{
+                minHeight: 0,
+              }}
             >
               <div className="modal-header">
                 <h5 className="modal-title">
@@ -554,20 +740,24 @@ export default function PaymentModal({
                   className="btn-close"
                   onClick={onClose}
                   disabled={isSaving}
+                  aria-label="Cerrar"
                 />
               </div>
 
-              <div className="modal-body">
+              <div
+                className="modal-body"
+                style={{
+                  overflowY:
+                    "auto",
+                }}
+              >
                 {errors.general && (
                   <div className="alert alert-danger">
-                    {errors.general}
+                    {
+                      errors.general
+                    }
                   </div>
                 )}
-
-                <p className="text-muted">
-                  Seleccione qué está pagando el
-                  paciente.
-                </p>
 
                 <div className="mb-3">
                   <label className="form-label">
@@ -605,10 +795,14 @@ export default function PaymentModal({
                     </label>
 
                     <select
-                      className={getSelectClass(
-                        "budget",
-                      )}
-                      value={form.budget}
+                      className={`form-select ${
+                        errors.budget
+                          ? "is-invalid"
+                          : ""
+                      }`}
+                      value={
+                        form.budget
+                      }
                       onChange={(event) =>
                         selectBudget(
                           event.target.value,
@@ -623,8 +817,10 @@ export default function PaymentModal({
                       {patientBudgets.map(
                         (budget) => {
                           const procedure =
-                            findProcedureForBudget(
+                            getProcedureForBudget(
                               budget,
+                              treatments,
+                              procedures,
                             );
 
                           const paid =
@@ -634,30 +830,42 @@ export default function PaymentModal({
 
                           const balance =
                             Number(
-                              budget.net_total,
+                              budget
+                                .net_total,
                             ) - paid;
 
                           return (
                             <option
-                              key={budget.id}
-                              value={budget.id}
+                              key={
+                                budget.id
+                              }
+                              value={
+                                budget.id
+                              }
                               disabled={
-                                balance <= 0 ||
-                                budget.budget_status ===
-                                  "Closed"
+                                balance <= 0
                               }
                             >
-                              {procedure?.name ??
-                                "Tratamiento"}{" "}
-                              - Total S/{" "}
+                              {procedure
+                                ?.name ??
+                                "Tratamiento"}
+                              {" - "}
+                              {getBudgetStatusText(
+                                budget
+                                  .budget_status,
+                              )}
+                              {" - Total S/ "}
                               {
-                                budget.net_total
-                              }{" "}
-                              - Saldo S/{" "}
+                                budget
+                                  .net_total
+                              }
+                              {" - Saldo S/ "}
                               {Math.max(
                                 balance,
                                 0,
-                              ).toFixed(2)}
+                              ).toFixed(
+                                2,
+                              )}
                             </option>
                           );
                         },
@@ -666,8 +874,17 @@ export default function PaymentModal({
 
                     {errors.budget && (
                       <div className="invalid-feedback">
-                        {errors.budget}
+                        {
+                          errors.budget
+                        }
                       </div>
+                    )}
+
+                    {patientBudgets.length ===
+                      0 && (
+                      <small className="text-danger">
+                        El paciente no tiene presupuestos disponibles para pagar.
+                      </small>
                     )}
                   </div>
                 )}
@@ -680,9 +897,11 @@ export default function PaymentModal({
                     </label>
 
                     <select
-                      className={getSelectClass(
-                        "appointment",
-                      )}
+                      className={`form-select ${
+                        errors.appointment
+                          ? "is-invalid"
+                          : ""
+                      }`}
                       value={
                         form.appointment
                       }
@@ -709,21 +928,19 @@ export default function PaymentModal({
                             }
                           >
                             {formatDate(
-                              appointment.appointment_date,
-                            )}{" "}
-                            -{" "}
-                            {appointment.appointment_time.slice(
-                              0,
-                              5,
-                            )}{" "}
-                            -{" "}
+                              appointment
+                                .appointment_date,
+                            )}
+                            {" - "}
+                            {appointment
+                              .appointment_time.slice(
+                                0,
+                                5,
+                              )}
+                            {" - "}
                             {
                               appointment.reason
-                            }{" "}
-                            - Pagado S/{" "}
-                            {getAppointmentPaidAmount(
-                              appointment.id,
-                            ).toFixed(2)}
+                            }
                           </option>
                         ),
                       )}
@@ -737,25 +954,44 @@ export default function PaymentModal({
                       </div>
                     )}
 
-                    <small className="text-muted">
-                      Como la cita no tiene precio
-                      registrado, el monto se
-                      ingresará manualmente.
-                    </small>
+                    {patientAppointments.length ===
+                      0 && (
+                      <small className="text-danger">
+                        El paciente no tiene citas disponibles para pagar.
+                      </small>
+                    )}
+
+                    <div>
+                      <small className="text-muted">
+                        La cita no tiene precio automático; el monto se ingresa manualmente.
+                      </small>
+                    </div>
                   </div>
                 )}
 
                 {selectedBudget && (
                   <div className="alert alert-info">
                     <strong>
-                      Total del presupuesto:
+                      Estado:
                     </strong>{" "}
-                    S/{" "}
-                    {selectedBudget.net_total}
+                    {getBudgetStatusText(
+                      selectedBudget
+                        .budget_status,
+                    )}
                     <br />
 
                     <strong>
-                      Pagado anteriormente:
+                      Total:
+                    </strong>{" "}
+                    S/{" "}
+                    {
+                      selectedBudget
+                        .net_total
+                    }
+                    <br />
+
+                    <strong>
+                      Pagado:
                     </strong>{" "}
                     S/{" "}
                     {budgetPaidAmount.toFixed(
@@ -770,7 +1006,9 @@ export default function PaymentModal({
                     {Math.max(
                       budgetBalance,
                       0,
-                    ).toFixed(2)}
+                    ).toFixed(
+                      2,
+                    )}
                   </div>
                 )}
 
@@ -782,10 +1020,14 @@ export default function PaymentModal({
 
                     <input
                       type="number"
-                      className={getInputClass(
-                        "amount",
-                      )}
-                      value={form.amount}
+                      className={`form-control ${
+                        errors.amount
+                          ? "is-invalid"
+                          : ""
+                      }`}
+                      value={
+                        form.amount
+                      }
                       min="0.01"
                       step="0.01"
                       onChange={(event) =>
@@ -799,7 +1041,9 @@ export default function PaymentModal({
 
                     {errors.amount && (
                       <div className="invalid-feedback">
-                        {errors.amount}
+                        {
+                          errors.amount
+                        }
                       </div>
                     )}
                   </div>
@@ -810,36 +1054,45 @@ export default function PaymentModal({
                     </label>
 
                     <select
-                      className={getSelectClass(
-                        "payment_method",
-                      )}
+                      className="form-select"
                       value={
-                        form.payment_method
+                        form
+                          .payment_method
                       }
                       onChange={(event) => {
                         const method =
                           event.target
                             .value as PaymentMethod;
 
-                        setForm({
-                          ...form,
-                          payment_method:
-                            method,
+                        setForm(
+                          (
+                            currentForm,
+                          ) => ({
+                            ...currentForm,
 
-                          reference_number:
-                            method === "Cash"
-                              ? ""
-                              : form.reference_number,
-                        });
+                            payment_method:
+                              method,
 
-                        setErrors({
-                          ...errors,
-                          payment_method:
-                            undefined,
-                          reference_number:
-                            undefined,
-                          general: undefined,
-                        });
+                            reference_number:
+                              method ===
+                              "Cash"
+                                ? ""
+                                : currentForm
+                                    .reference_number,
+                          }),
+                        );
+
+                        setErrors(
+                          (
+                            currentErrors,
+                          ) => ({
+                            ...currentErrors,
+                            reference_number:
+                              undefined,
+                            general:
+                              undefined,
+                          }),
+                        );
                       }}
                       disabled={isSaving}
                     >
@@ -859,30 +1112,27 @@ export default function PaymentModal({
                         Seguro
                       </option>
                     </select>
-
-                    {errors.payment_method && (
-                      <div className="invalid-feedback">
-                        {
-                          errors.payment_method
-                        }
-                      </div>
-                    )}
                   </div>
 
                   <div className="col-md-4 mb-3">
                     <label className="form-label">
                       Número de referencia
                       {form.payment_method !==
-                        "Cash" && " *"}
+                        "Cash" &&
+                        " *"}
                     </label>
 
                     <input
                       type="text"
-                      className={getInputClass(
-                        "reference_number",
-                      )}
+                      className={`form-control ${
+                        errors
+                          .reference_number
+                          ? "is-invalid"
+                          : ""
+                      }`}
                       value={
-                        form.reference_number
+                        form
+                          .reference_number
                       }
                       onChange={(event) =>
                         changeField(
@@ -904,10 +1154,12 @@ export default function PaymentModal({
                       }
                     />
 
-                    {errors.reference_number && (
+                    {errors
+                      .reference_number && (
                       <div className="invalid-feedback">
                         {
-                          errors.reference_number
+                          errors
+                            .reference_number
                         }
                       </div>
                     )}

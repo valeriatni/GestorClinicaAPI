@@ -82,17 +82,26 @@ class PaymentSerializer(serializers.ModelSerializer):
                     )
                 })
 
-            if budget.budget_status != 'Accepted':
-                raise serializers.ValidationError({
-                    'budget': (
-                        'Solo puede pagar un presupuesto aceptado.'
-                    )
-                })
-
             if budget.patient.is_deleted:
                 raise serializers.ValidationError({
                     'budget': (
                         'El paciente del presupuesto está eliminado.'
+                    )
+                })
+
+            if budget.budget_status == 'Rejected':
+                raise serializers.ValidationError({
+                    'budget': (
+                        'No puede registrar pagos para '
+                        'un presupuesto rechazado.'
+                    )
+                })
+
+            if budget.budget_status == 'Completed':
+                raise serializers.ValidationError({
+                    'budget': (
+                        'El presupuesto ya está '
+                        'completamente pagado.'
                     )
                 })
 
@@ -109,11 +118,15 @@ class PaymentSerializer(serializers.ModelSerializer):
             if remaining_balance <= 0:
                 raise serializers.ValidationError({
                     'budget': (
-                        'El presupuesto ya está completamente pagado.'
+                        'El presupuesto ya está '
+                        'completamente pagado.'
                     )
                 })
 
-            if amount > remaining_balance:
+            if (
+                amount is not None
+                and amount > remaining_balance
+            ):
                 raise serializers.ValidationError({
                     'amount': (
                         f'El monto supera el saldo pendiente. '
@@ -130,10 +143,14 @@ class PaymentSerializer(serializers.ModelSerializer):
                     )
                 })
 
-            if appointment.appointment_status != 'Attended':
+            if appointment.appointment_status in [
+                'Cancelled',
+                'No Show',
+            ]:
                 raise serializers.ValidationError({
                     'appointment': (
-                        'Solo puede pagar una cita atendida.'
+                        'No puede registrar un pago para una cita '
+                        'cancelada o no asistida.'
                     )
                 })
 
@@ -232,8 +249,8 @@ class PaymentDetailSerializer(serializers.ModelSerializer):
         total_paid = Payment.objects.filter(
             budget=obj.budget
         ).aggregate(
-            total=Sum('amount')
-        )['total'] or 0
+                total=Sum('amount')
+            )['total'] or 0
 
         remaining = (
             obj.budget.net_total - total_paid

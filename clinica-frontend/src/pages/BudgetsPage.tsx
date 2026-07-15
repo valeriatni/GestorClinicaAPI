@@ -24,6 +24,41 @@ import type {
   BudgetStatus,
 } from "../types/budget";
 
+
+function getRelationId(
+  value: unknown,
+): number | null {
+  if (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value > 0
+  ) {
+    return value;
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "id" in value
+  ) {
+    const id = Number(
+      (value as {
+        id: unknown;
+      }).id,
+    );
+
+    if (
+      Number.isInteger(id) &&
+      id > 0
+    ) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
+
 function getStatusText(
   status: BudgetStatus,
 ): string {
@@ -39,6 +74,7 @@ function getStatusText(
 
   return statuses[status];
 }
+
 
 function getStatusClass(
   status: BudgetStatus,
@@ -56,11 +92,14 @@ function getStatusClass(
   return classes[status];
 }
 
+
 export default function BudgetsPage() {
   const navigate = useNavigate();
 
-  const [searchParams, setSearchParams] =
-    useSearchParams();
+  const [
+    searchParams,
+    setSearchParams,
+  ] = useSearchParams();
 
   const patientFromUrl =
     searchParams.get("patient");
@@ -76,15 +115,21 @@ export default function BudgetsPage() {
   const [
     initialTreatmentId,
     setInitialTreatmentId,
-  ] = useState<number | null>(null);
+  ] = useState<number | null>(
+    null,
+  );
 
-  const [showModal, setShowModal] =
-    useState(false);
+  const [
+    showModal,
+    setShowModal,
+  ] = useState(false);
 
   const [
     selectedBudget,
     setSelectedBudget,
-  ] = useState<Budget | null>(null);
+  ] = useState<Budget | null>(
+    null,
+  );
 
   const [
     successMessage,
@@ -110,6 +155,7 @@ export default function BudgetsPage() {
     updateMutation,
   } = useBudgets();
 
+
   useEffect(() => {
     if (
       patients.length === 0 ||
@@ -119,9 +165,10 @@ export default function BudgetsPage() {
     }
 
     if (treatmentFromUrl) {
-      const treatmentId = Number(
-        treatmentFromUrl,
-      );
+      const treatmentId =
+        Number(
+          treatmentFromUrl,
+        );
 
       const treatment =
         treatments.find(
@@ -130,18 +177,28 @@ export default function BudgetsPage() {
             treatmentId,
         );
 
+      const treatmentMedicalRecordId =
+        getRelationId(
+          treatment?.medical_record,
+        );
+
       const medicalRecord =
         medicalRecords.find(
           (record) =>
             record.id ===
-            treatment?.medical_record,
+            treatmentMedicalRecordId,
+        );
+
+      const medicalRecordPatientId =
+        getRelationId(
+          medicalRecord?.patient,
         );
 
       const patient =
         patients.find(
           (currentPatient) =>
             currentPatient.id ===
-            medicalRecord?.patient,
+            medicalRecordPatientId,
         );
 
       if (
@@ -168,16 +225,19 @@ export default function BudgetsPage() {
 
       setSearchParams(
         {},
-        { replace: true },
+        {
+          replace: true,
+        },
       );
 
       return;
     }
 
     if (patientFromUrl) {
-      const patientId = Number(
-        patientFromUrl,
-      );
+      const patientId =
+        Number(
+          patientFromUrl,
+        );
 
       const patient =
         patients.find(
@@ -198,7 +258,9 @@ export default function BudgetsPage() {
 
       setSearchParams(
         {},
-        { replace: true },
+        {
+          replace: true,
+        },
       );
     }
   }, [
@@ -210,60 +272,90 @@ export default function BudgetsPage() {
     setSearchParams,
   ]);
 
+
   const selectedPatient =
     patients.find(
       (patient) =>
         patient.id ===
-        Number(selectedPatientId),
+        Number(
+          selectedPatientId,
+        ),
     );
+
 
   const patientBudgets =
     budgets.filter(
       (budget) =>
-        budget.patient ===
-        Number(selectedPatientId),
+        getRelationId(
+          budget.patient,
+        ) ===
+        Number(
+          selectedPatientId,
+        ),
     );
+
 
   const patientMedicalRecordIds =
     medicalRecords
       .filter(
         (record) =>
-          record.patient ===
-          Number(selectedPatientId),
+          getRelationId(
+            record.patient,
+          ) ===
+          Number(
+            selectedPatientId,
+          ),
       )
-      .map((record) => record.id);
+      .map(
+        (record) =>
+          record.id,
+      );
+
 
   const availableTreatments =
     treatments.filter(
       (treatment) =>
         patientMedicalRecordIds.includes(
-          treatment.medical_record,
+          getRelationId(
+            treatment.medical_record,
+          ) ?? -1,
         ) &&
         treatment.treatment_status ===
           "Suggested",
     );
+
 
   function findTreatment(
     treatmentId: number,
   ) {
     return treatments.find(
       (treatment) =>
-        treatment.id === treatmentId,
+        treatment.id ===
+        treatmentId,
     );
   }
+
 
   function findProcedure(
     treatmentId: number,
   ) {
     const treatment =
-      findTreatment(treatmentId);
+      findTreatment(
+        treatmentId,
+      );
+
+    const procedureId =
+      getRelationId(
+        treatment?.procedure,
+      );
 
     return procedures.find(
       (procedure) =>
         procedure.id ===
-        treatment?.procedure,
+        procedureId,
     );
   }
+
 
   function openCreateModal() {
     setSuccessMessage("");
@@ -286,7 +378,8 @@ export default function BudgetsPage() {
     }
 
     if (
-      availableTreatments.length === 0
+      availableTreatments.length ===
+      0
     ) {
       setErrorMessage(
         "El paciente no tiene tratamientos sugeridos pendientes de presupuesto.",
@@ -300,11 +393,13 @@ export default function BudgetsPage() {
     setShowModal(true);
   }
 
+
   function openEditModal(
     budget: Budget,
   ) {
     if (
-      budget.budget_status === "Closed"
+      budget.budget_status ===
+      "Closed"
     ) {
       setErrorMessage(
         "Un presupuesto cerrado ya no puede editarse.",
@@ -313,14 +408,22 @@ export default function BudgetsPage() {
       return;
     }
 
+    const suggestedTreatmentId =
+      getRelationId(
+        budget.suggested_treatment,
+      );
+
     setSelectedBudget(budget);
+
     setInitialTreatmentId(
-      budget.suggested_treatment,
+      suggestedTreatmentId,
     );
+
     setShowModal(true);
     setSuccessMessage("");
     setErrorMessage("");
   }
+
 
   async function saveBudget(
     budgetData: BudgetPayload,
@@ -341,23 +444,27 @@ export default function BudgetsPage() {
     }
 
     if (selectedBudget) {
-      await updateMutation.mutateAsync({
-        id: selectedBudget.id,
-        budget: budgetData,
-      });
+      await updateMutation
+        .mutateAsync({
+          id: selectedBudget.id,
+          budget: budgetData,
+        });
 
       setSuccessMessage(
         "El presupuesto se actualizó correctamente.",
       );
     } else {
-      await createMutation.mutateAsync(
-        budgetData,
-      );
+      await createMutation
+        .mutateAsync(
+          budgetData,
+        );
 
       await updateSuggestedTreatment(
-        budgetData.suggested_treatment,
+        budgetData
+          .suggested_treatment,
         {
-          treatment_status: "Budgeted",
+          treatment_status:
+            "Budgeted",
         },
       );
 
@@ -369,7 +476,10 @@ export default function BudgetsPage() {
     setShowModal(false);
     setSelectedBudget(null);
     setInitialTreatmentId(null);
+
+    await refetchBudgets();
   }
+
 
   async function changeBudgetStatus(
     budget: Budget,
@@ -379,7 +489,8 @@ export default function BudgetsPage() {
     setErrorMessage("");
 
     if (
-      budget.budget_status === "Closed"
+      budget.budget_status ===
+      "Closed"
     ) {
       setErrorMessage(
         "El presupuesto está cerrado y ya no puede cambiarse.",
@@ -388,7 +499,10 @@ export default function BudgetsPage() {
       return;
     }
 
-    if (newStatus === "Cancelled") {
+    if (
+      newStatus ===
+      "Cancelled"
+    ) {
       const confirmed =
         window.confirm(
           "¿Desea cancelar este presupuesto?",
@@ -400,21 +514,35 @@ export default function BudgetsPage() {
     }
 
     try {
-      await updateMutation.mutateAsync({
-        id: budget.id,
-        budget: {
-          budget_status: newStatus,
-        },
-      });
+      await updateMutation
+        .mutateAsync({
+          id: budget.id,
 
-      if (newStatus === "Cancelled") {
-        await updateSuggestedTreatment(
-          budget.suggested_treatment,
-          {
-            treatment_status:
-              "Suggested",
+          budget: {
+            budget_status:
+              newStatus,
           },
-        );
+        });
+
+      if (
+        newStatus ===
+        "Cancelled"
+      ) {
+        const treatmentId =
+          getRelationId(
+            budget
+              .suggested_treatment,
+          );
+
+        if (treatmentId) {
+          await updateSuggestedTreatment(
+            treatmentId,
+            {
+              treatment_status:
+                "Suggested",
+            },
+          );
+        }
       }
 
       setSuccessMessage(
@@ -422,6 +550,8 @@ export default function BudgetsPage() {
           newStatus,
         )}.`,
       );
+
+      await refetchBudgets();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -430,6 +560,7 @@ export default function BudgetsPage() {
       );
     }
   }
+
 
   function goToPayments(
     budget: Budget,
@@ -445,16 +576,33 @@ export default function BudgetsPage() {
       return;
     }
 
+    const patientId =
+      getRelationId(
+        budget.patient,
+      );
+
+    if (!patientId) {
+      setErrorMessage(
+        "No se pudo identificar al paciente del presupuesto.",
+      );
+
+      return;
+    }
+
     navigate(
-      `/payments?patient=${budget.patient}&budget=${budget.id}`,
+      `/payments?patient=${patientId}` +
+        `&budget=${budget.id}`,
     );
   }
+
 
   return (
     <div className="container-fluid py-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2>Presupuestos</h2>
+          <h2>
+            Presupuestos
+          </h2>
 
           <p className="text-muted mb-0">
             Cree presupuestos a partir de los
@@ -465,7 +613,9 @@ export default function BudgetsPage() {
         <button
           type="button"
           className="btn btn-primary"
-          onClick={openCreateModal}
+          onClick={
+            openCreateModal
+          }
         >
           Nuevo presupuesto
         </button>
@@ -507,7 +657,9 @@ export default function BudgetsPage() {
 
           <select
             className="form-select"
-            value={selectedPatientId}
+            value={
+              selectedPatientId
+            }
             onChange={(event) => {
               setSelectedPatientId(
                 event.target.value,
@@ -522,17 +674,22 @@ export default function BudgetsPage() {
               Seleccione un paciente
             </option>
 
-            {patients.map((patient) => (
-              <option
-                key={patient.id}
-                value={patient.id}
-                disabled={!patient.is_active}
-              >
-                {patient.first_name}{" "}
-                {patient.last_name} - DNI{" "}
-                {patient.dni}
-              </option>
-            ))}
+            {patients.map(
+              (patient) => (
+                <option
+                  key={patient.id}
+                  value={patient.id}
+                  disabled={
+                    !patient.is_active
+                  }
+                >
+                  {patient.first_name}{" "}
+                  {patient.last_name}
+                  {" - DNI "}
+                  {patient.dni}
+                </option>
+              ),
+            )}
           </select>
 
           {!selectedPatientId && (
@@ -594,11 +751,26 @@ export default function BudgetsPage() {
               </h5>
 
               <small className="text-muted">
-                DNI: {selectedPatient.dni}
+                DNI:{" "}
+                {selectedPatient.dni}
               </small>
             </div>
 
             <div className="card-body">
+              {availableTreatments.length >
+                0 && (
+                <div className="alert alert-success">
+                  El paciente tiene{" "}
+                  <strong>
+                    {
+                      availableTreatments.length
+                    }
+                  </strong>{" "}
+                  tratamiento(s) sugerido(s)
+                  pendiente(s) de presupuesto.
+                </div>
+              )}
+
               {patientBudgets.length ===
                 0 && (
                 <div className="alert alert-info">
@@ -613,43 +785,73 @@ export default function BudgetsPage() {
                   <table className="table table-hover align-middle">
                     <thead className="table-light">
                       <tr>
-                        <th>Tratamiento</th>
-                        <th>Precio bruto</th>
-                        <th>Descuento</th>
-                        <th>Total</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
+                        <th>
+                          Tratamiento
+                        </th>
+
+                        <th>
+                          Precio bruto
+                        </th>
+
+                        <th>
+                          Descuento
+                        </th>
+
+                        <th>
+                          Total
+                        </th>
+
+                        <th>
+                          Estado
+                        </th>
+
+                        <th>
+                          Acciones
+                        </th>
                       </tr>
                     </thead>
 
                     <tbody>
                       {patientBudgets.map(
                         (budget) => {
-                          const procedure =
-                            findProcedure(
-                              budget.suggested_treatment,
+                          const treatmentId =
+                            getRelationId(
+                              budget
+                                .suggested_treatment,
                             );
+
+                          const procedure =
+                            treatmentId
+                              ? findProcedure(
+                                  treatmentId,
+                                )
+                              : undefined;
 
                           return (
                             <tr
-                              key={budget.id}
+                              key={
+                                budget.id
+                              }
                             >
                               <td>
-                                {procedure?.name ??
+                                {procedure
+                                  ?.name ??
                                   "Tratamiento no encontrado"}
                               </td>
 
                               <td>
                                 S/{" "}
                                 {
-                                  budget.gross_total
+                                  budget
+                                    .gross_total
                                 }
                               </td>
 
                               <td>
                                 S/{" "}
                                 {
-                                  budget.discount
+                                  budget
+                                    .discount
                                 }
                               </td>
 
@@ -657,7 +859,8 @@ export default function BudgetsPage() {
                                 <strong>
                                   S/{" "}
                                   {
-                                    budget.net_total
+                                    budget
+                                      .net_total
                                   }
                                 </strong>
                               </td>
@@ -665,18 +868,21 @@ export default function BudgetsPage() {
                               <td>
                                 <span
                                   className={`badge ${getStatusClass(
-                                    budget.budget_status,
+                                    budget
+                                      .budget_status,
                                   )}`}
                                 >
                                   {getStatusText(
-                                    budget.budget_status,
+                                    budget
+                                      .budget_status,
                                   )}
                                 </span>
                               </td>
 
                               <td>
                                 <div className="d-flex gap-2 flex-wrap">
-                                  {budget.budget_status ===
+                                  {budget
+                                    .budget_status ===
                                     "Draft" && (
                                     <button
                                       type="button"
@@ -688,16 +894,19 @@ export default function BudgetsPage() {
                                         )
                                       }
                                       disabled={
-                                        updateMutation.isPending
+                                        updateMutation
+                                          .isPending
                                       }
                                     >
                                       Aprobar
                                     </button>
                                   )}
 
-                                  {budget.budget_status !==
+                                  {budget
+                                    .budget_status !==
                                     "Closed" &&
-                                    budget.budget_status !==
+                                    budget
+                                      .budget_status !==
                                       "Cancelled" && (
                                       <button
                                         type="button"
@@ -712,9 +921,11 @@ export default function BudgetsPage() {
                                       </button>
                                     )}
 
-                                  {(budget.budget_status ===
+                                  {(budget
+                                    .budget_status ===
                                     "Draft" ||
-                                    budget.budget_status ===
+                                    budget
+                                      .budget_status ===
                                       "Approved") && (
                                     <button
                                       type="button"
@@ -729,9 +940,11 @@ export default function BudgetsPage() {
                                     </button>
                                   )}
 
-                                  {budget.budget_status !==
+                                  {budget
+                                    .budget_status !==
                                     "Closed" &&
-                                    budget.budget_status !==
+                                    budget
+                                      .budget_status !==
                                       "Cancelled" && (
                                       <button
                                         type="button"
@@ -743,7 +956,8 @@ export default function BudgetsPage() {
                                           )
                                         }
                                         disabled={
-                                          updateMutation.isPending
+                                          updateMutation
+                                            .isPending
                                         }
                                       >
                                         Cancelar
@@ -777,8 +991,12 @@ export default function BudgetsPage() {
             medicalRecords={
               medicalRecords
             }
-            treatments={treatments}
-            procedures={procedures}
+            treatments={
+              treatments
+            }
+            procedures={
+              procedures
+            }
             isSaving={
               createMutation.isPending ||
               updateMutation.isPending

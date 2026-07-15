@@ -12,563 +12,625 @@ import type {
   TreatmentStatus,
 } from "../../types/suggestedTreatment";
 
-interface SuggestedTreatmentModalProps {
+
+interface Props {
   medicalRecordId: number;
-  treatment: SuggestedTreatment | null;
+
+  treatment:
+    | SuggestedTreatment
+    | null;
+
   treatments: SuggestedTreatment[];
   procedures: ProcedureOption[];
   specialists: TreatmentSpecialist[];
+
   isSaving: boolean;
+
   onClose: () => void;
 
   onSave: (
-    treatment: SuggestedTreatmentPayload,
+    treatment:
+      SuggestedTreatmentPayload,
   ) => Promise<void>;
 }
 
-interface TreatmentForm {
-  procedure: string;
-  specialist: string;
-  tooth_code: string;
-  quantity: string;
-  notes: string;
-  treatment_status: TreatmentStatus;
+
+function getRelationId(
+  value:
+    | number
+    | {
+        id: number;
+      }
+    | null
+    | undefined,
+): number | null {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  return typeof value === "number"
+    ? value
+    : value.id;
 }
 
-interface FormErrors {
-  procedure?: string;
-  specialist?: string;
-  tooth_code?: string;
-  quantity?: string;
-  notes?: string;
-  treatment_status?: string;
-  general?: string;
+
+function today(): string {
+  return new Date()
+    .toISOString()
+    .slice(0, 10);
 }
 
-const emptyForm: TreatmentForm = {
-  procedure: "",
-  specialist: "",
-  tooth_code: "",
-  quantity: "1",
-  notes: "",
-  treatment_status: "Suggested",
-};
 
 export default function SuggestedTreatmentModal({
   medicalRecordId,
   treatment,
-  treatments,
   procedures,
   specialists,
   isSaving,
   onClose,
   onSave,
-}: SuggestedTreatmentModalProps) {
-  const [form, setForm] =
-    useState<TreatmentForm>(emptyForm);
+}: Props) {
+  const [
+    procedureId,
+    setProcedureId,
+  ] = useState("");
 
-  const [errors, setErrors] =
-    useState<FormErrors>({});
+  const [
+    specialistId,
+    setSpecialistId,
+  ] = useState("");
+
+  const [
+    diagnosis,
+    setDiagnosis,
+  ] = useState("");
+
+  const [
+    clinicalObservations,
+    setClinicalObservations,
+  ] = useState("");
+
+  const [
+    diagnosisDate,
+    setDiagnosisDate,
+  ] = useState(today());
+
+  const [
+    treatmentStatus,
+    setTreatmentStatus,
+  ] = useState<TreatmentStatus>(
+    "Suggested",
+  );
+
+  const [
+    cancelledReason,
+    setCancelledReason,
+  ] = useState("");
+
+  const [
+    errorMessage,
+    setErrorMessage,
+  ] = useState("");
+
 
   useEffect(() => {
-    if (treatment) {
-      setForm({
-        procedure: treatment.procedure
-          ? String(treatment.procedure)
-          : "",
-
-        specialist: String(treatment.specialist),
-
-        tooth_code: treatment.tooth_code ?? "",
-
-        quantity: String(treatment.quantity),
-
-        notes: treatment.notes ?? "",
-
-        treatment_status:
-          treatment.treatment_status,
-      });
-    } else {
-      setForm(emptyForm);
-    }
-
-    setErrors({});
-  }, [treatment]);
-
-  function changeField(
-    field: keyof TreatmentForm,
-    value: string,
-  ) {
-    setForm({
-      ...form,
-      [field]: value,
-    });
-
-    setErrors({
-      ...errors,
-      [field]: undefined,
-      general: undefined,
-    });
-  }
-
-  function validateForm(): boolean {
-    const newErrors: FormErrors = {};
-
-    const procedureId = Number(form.procedure);
-    const specialistId = Number(form.specialist);
-    const quantity = Number(form.quantity);
-    const toothCode = form.tooth_code.trim();
-    const notes = form.notes.trim();
-
-    if (!form.procedure) {
-      newErrors.procedure =
-        "Debe seleccionar un procedimiento.";
-    } else {
-      const selectedProcedure = procedures.find(
-        (procedure) =>
-          procedure.id === procedureId,
+    if (!treatment) {
+      setProcedureId("");
+      setSpecialistId("");
+      setDiagnosis("");
+      setClinicalObservations("");
+      setDiagnosisDate(today());
+      setTreatmentStatus(
+        "Suggested",
       );
+      setCancelledReason("");
+      setErrorMessage("");
 
-      if (!selectedProcedure) {
-        newErrors.procedure =
-          "El procedimiento seleccionado no existe.";
-      } else if (!selectedProcedure.is_active) {
-        newErrors.procedure =
-          "El procedimiento está inactivo.";
-      }
-    }
-
-    if (!form.specialist) {
-      newErrors.specialist =
-        "Debe seleccionar un especialista.";
-    } else {
-      const selectedSpecialist = specialists.find(
-        (specialist) =>
-          specialist.id === specialistId,
-      );
-
-      if (!selectedSpecialist) {
-        newErrors.specialist =
-          "El especialista seleccionado no existe.";
-      } else if (!selectedSpecialist.is_active) {
-        newErrors.specialist =
-          "El especialista está inactivo.";
-      }
-    }
-
-    if (!form.quantity) {
-      newErrors.quantity =
-        "Debe ingresar la cantidad.";
-    } else if (!Number.isInteger(quantity)) {
-      newErrors.quantity =
-        "La cantidad debe ser un número entero.";
-    } else if (quantity <= 0) {
-      newErrors.quantity =
-        "La cantidad debe ser mayor que cero.";
-    } else if (quantity > 32) {
-      newErrors.quantity =
-        "La cantidad no puede superar 32.";
-    }
-
-    if (toothCode.length > 20) {
-      newErrors.tooth_code =
-        "La pieza dental no puede superar los 20 caracteres.";
-    }
-
-    if (notes.length > 500) {
-      newErrors.notes =
-        "Las notas no pueden superar los 500 caracteres.";
-    }
-
-    if (
-      form.procedure &&
-      form.specialist &&
-      form.quantity
-    ) {
-      const duplicateTreatment = treatments.some(
-        (currentTreatment) =>
-          currentTreatment.id !== treatment?.id &&
-          currentTreatment.medical_record ===
-            medicalRecordId &&
-          currentTreatment.procedure === procedureId &&
-          (currentTreatment.tooth_code ?? "")
-            .trim()
-            .toLowerCase() ===
-            toothCode.toLowerCase() &&
-          currentTreatment.treatment_status !==
-            "Cancelled",
-      );
-
-      if (duplicateTreatment) {
-        newErrors.general =
-          "Ya existe este procedimiento sugerido para la misma pieza dental.";
-      }
-    }
-
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
-  }
-
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-
-    setErrors({});
-
-    if (!validateForm()) {
       return;
     }
 
-    const treatmentData: SuggestedTreatmentPayload = {
-      medical_record: medicalRecordId,
+    const currentProcedureId =
+      getRelationId(
+        treatment.procedure,
+      );
 
-      procedure: Number(form.procedure),
+    const currentSpecialistId =
+      getRelationId(
+        treatment.specialist,
+      );
 
-      specialist: Number(form.specialist),
+    setProcedureId(
+      currentProcedureId
+        ? String(
+            currentProcedureId,
+          )
+        : "",
+    );
 
-      tooth_code:
-        form.tooth_code.trim().toUpperCase() ||
-        null,
+    setSpecialistId(
+      currentSpecialistId
+        ? String(
+            currentSpecialistId,
+          )
+        : "",
+    );
 
-      quantity: Number(form.quantity),
+    setDiagnosis(
+      treatment.diagnosis ?? "",
+    );
 
-      notes: form.notes.trim() || null,
+    setClinicalObservations(
+      treatment
+        .clinical_observations ??
+        "",
+    );
 
-      treatment_status:
-        form.treatment_status,
+    setDiagnosisDate(
+      treatment.diagnosis_date,
+    );
 
-      is_active: true,
-    };
+    setTreatmentStatus(
+      treatment.treatment_status,
+    );
+
+    setCancelledReason(
+      treatment.cancelled_reason ??
+        "",
+    );
+
+    setErrorMessage("");
+  }, [treatment]);
+
+
+  async function handleSubmit(
+    event:
+      FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+
+    setErrorMessage("");
+
+    const parsedProcedureId =
+      Number(procedureId);
+
+    const parsedSpecialistId =
+      Number(specialistId);
+
+    if (
+      !Number.isInteger(
+        parsedProcedureId,
+      ) ||
+      parsedProcedureId <= 0
+    ) {
+      setErrorMessage(
+        "Debe seleccionar un procedimiento.",
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isInteger(
+        parsedSpecialistId,
+      ) ||
+      parsedSpecialistId <= 0
+    ) {
+      setErrorMessage(
+        "Debe seleccionar un especialista.",
+      );
+
+      return;
+    }
+
+    if (
+      diagnosis.trim().length < 3
+    ) {
+      setErrorMessage(
+        "Debe ingresar el diagnóstico.",
+      );
+
+      return;
+    }
+
+    if (!diagnosisDate) {
+      setErrorMessage(
+        "Debe ingresar la fecha del diagnóstico.",
+      );
+
+      return;
+    }
+
+    if (
+      diagnosisDate > today()
+    ) {
+      setErrorMessage(
+        "La fecha del diagnóstico no puede estar en el futuro.",
+      );
+
+      return;
+    }
+
+    if (
+      treatmentStatus ===
+        "Cancelled" &&
+      !cancelledReason.trim()
+    ) {
+      setErrorMessage(
+        "Debe ingresar el motivo de cancelación.",
+      );
+
+      return;
+    }
 
     try {
-      await onSave(treatmentData);
-    } catch (error) {
-      setErrors({
-        general:
-          error instanceof Error
-            ? error.message
-            : "No se pudo guardar el tratamiento.",
+      await onSave({
+        medical_record:
+          medicalRecordId,
+
+        procedure:
+          parsedProcedureId,
+
+        specialist:
+          parsedSpecialistId,
+
+        diagnosis:
+          diagnosis.trim(),
+
+        clinical_observations:
+          clinicalObservations
+            .trim() ||
+          null,
+
+        diagnosis_date:
+          diagnosisDate,
+
+        treatment_status:
+          treatmentStatus,
+
+        is_active:
+          treatmentStatus !==
+          "Cancelled",
+
+        cancelled_reason:
+          treatmentStatus ===
+          "Cancelled"
+            ? cancelledReason.trim()
+            : null,
       });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo guardar el tratamiento sugerido.",
+      );
     }
   }
 
-  function inputClass(
-    field: keyof FormErrors,
-  ): string {
-    return `form-control ${
-      errors[field] ? "is-invalid" : ""
-    }`;
-  }
 
-  function selectClass(
-    field: keyof FormErrors,
-  ): string {
-    return `form-select ${
-      errors[field] ? "is-invalid" : ""
-    }`;
-  }
+  const activeProcedures =
+    procedures.filter(
+      (procedure) =>
+        procedure.is_active &&
+        !procedure.is_deleted,
+    );
+
+  const activeSpecialists =
+    specialists.filter(
+      (specialist) =>
+        specialist.is_active &&
+        !specialist.is_deleted,
+    );
+
 
   return (
-    <>
-      <div
-        className="modal fade show d-block"
-        tabIndex={-1}
-      >
-        <div className="modal-dialog modal-lg modal-dialog-centered">
-          <div className="modal-content">
-            <form
-              onSubmit={handleSubmit}
-              noValidate
-            >
-              <div className="modal-header">
-                <h5 className="modal-title">
-                  {treatment
-                    ? "Editar tratamiento sugerido"
-                    : "Agregar tratamiento sugerido"}
-                </h5>
+    <div
+      className="modal d-block"
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      style={{
+        backgroundColor:
+          "rgba(0, 0, 0, 0.5)",
 
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={onClose}
-                  disabled={isSaving}
-                />
+        overflowY: "auto",
+        padding: "1rem 0",
+      }}
+    >
+      <div
+        className="modal-dialog modal-lg"
+        role="document"
+        style={{
+          marginTop: 0,
+          marginBottom: 0,
+        }}
+      >
+        <div
+          className="modal-content"
+          style={{
+            maxHeight:
+              "calc(100vh - 2rem)",
+
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <div className="modal-header flex-shrink-0">
+            <h5 className="modal-title">
+              {treatment
+                ? "Editar tratamiento sugerido"
+                : "Nuevo tratamiento sugerido"}
+            </h5>
+
+            <button
+              type="button"
+              className="btn-close"
+              onClick={onClose}
+              disabled={isSaving}
+              aria-label="Cerrar"
+            />
+          </div>
+
+          <form
+            onSubmit={handleSubmit}
+            className="d-flex flex-column flex-grow-1"
+            style={{
+              minHeight: 0,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              className="modal-body"
+              style={{
+                minHeight: 0,
+                overflowY: "scroll",
+                overflowX: "hidden",
+                scrollbarGutter: "stable",
+                paddingRight: "1.25rem",
+              }}
+            >
+              {errorMessage && (
+                <div className="alert alert-danger">
+                  {errorMessage}
+                </div>
+              )}
+
+              <div className="alert alert-light border">
+                Historia clínica:{" "}
+                <strong>
+                  #{medicalRecordId}
+                </strong>
               </div>
 
-              <div className="modal-body">
-                {errors.general && (
-                  <div className="alert alert-danger">
-                    {errors.general}
-                  </div>
-                )}
+              <div className="row">
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">
+                    Procedimiento *
+                  </label>
 
-                <p className="text-muted">
-                  Los campos con * son obligatorios.
-                </p>
+                  <select
+                    className="form-select"
+                    value={procedureId}
+                    onChange={(event) =>
+                      setProcedureId(
+                        event.target.value,
+                      )
+                    }
+                    required
+                    disabled={isSaving}
+                  >
+                    <option value="">
+                      Seleccione un procedimiento
+                    </option>
 
-                <div className="row">
-                  <div className="col-md-6 mb-3">
-                    <label className="form-label">
-                      Procedimiento *
-                    </label>
+                    {activeProcedures.map(
+                      (procedure) => {
+                        const price =
+                          procedure.base_price ??
+                          procedure.price;
 
-                    <select
-                      className={selectClass(
-                        "procedure",
-                      )}
-                      value={form.procedure}
-                      onChange={(event) =>
-                        changeField(
-                          "procedure",
-                          event.target.value,
-                        )
-                      }
-                      disabled={isSaving}
-                    >
-                      <option value="">
-                        Seleccione un procedimiento
-                      </option>
-
-                      {procedures.map((procedure) => (
-                        <option
-                          key={procedure.id}
-                          value={procedure.id}
-                          disabled={!procedure.is_active}
-                        >
-                          {procedure.name} - S/{" "}
-                          {procedure.price}
-                          {!procedure.is_active
-                            ? " - Inactivo"
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-
-                    {errors.procedure && (
-                      <div className="invalid-feedback">
-                        {errors.procedure}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="col-md-6 mb-3">
-                    <label className="form-label">
-                      Especialista *
-                    </label>
-
-                    <select
-                      className={selectClass(
-                        "specialist",
-                      )}
-                      value={form.specialist}
-                      onChange={(event) =>
-                        changeField(
-                          "specialist",
-                          event.target.value,
-                        )
-                      }
-                      disabled={isSaving}
-                    >
-                      <option value="">
-                        Seleccione un especialista
-                      </option>
-
-                      {specialists.map(
-                        (specialist) => (
+                        return (
                           <option
-                            key={specialist.id}
-                            value={specialist.id}
-                            disabled={
-                              !specialist.is_active
-                            }
+                            key={procedure.id}
+                            value={procedure.id}
                           >
-                            Dr(a).{" "}
-                            {specialist.first_name}{" "}
-                            {specialist.last_name}
-                            {!specialist.is_active
-                              ? " - Inactivo"
+                            {procedure.name}
+                            {price
+                              ? ` - S/ ${price}`
                               : ""}
                           </option>
-                        ),
-                      )}
-                    </select>
-
-                    {errors.specialist && (
-                      <div className="invalid-feedback">
-                        {errors.specialist}
-                      </div>
+                        );
+                      },
                     )}
-                  </div>
+                  </select>
+                </div>
 
-                  <div className="col-md-4 mb-3">
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">
+                    Especialista *
+                  </label>
+
+                  <select
+                    className="form-select"
+                    value={specialistId}
+                    onChange={(event) =>
+                      setSpecialistId(
+                        event.target.value,
+                      )
+                    }
+                    required
+                    disabled={isSaving}
+                  >
+                    <option value="">
+                      Seleccione un especialista
+                    </option>
+
+                    {activeSpecialists.map(
+                      (specialist) => (
+                        <option
+                          key={specialist.id}
+                          value={specialist.id}
+                        >
+                          Dr(a).{" "}
+                          {specialist.first_name}{" "}
+                          {specialist.last_name}
+                          {" - "}
+                          {specialist.license_number}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </div>
+
+                <div className="col-md-8 mb-3">
+                  <label className="form-label">
+                    Diagnóstico *
+                  </label>
+
+                  <textarea
+                    className="form-control"
+                    rows={4}
+                    value={diagnosis}
+                    onChange={(event) =>
+                      setDiagnosis(
+                        event.target.value,
+                      )
+                    }
+                    required
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="col-md-4 mb-3">
+                  <label className="form-label">
+                    Fecha del diagnóstico *
+                  </label>
+
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={diagnosisDate}
+                    max={today()}
+                    onChange={(event) =>
+                      setDiagnosisDate(
+                        event.target.value,
+                      )
+                    }
+                    required
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="col-12 mb-3">
+                  <label className="form-label">
+                    Observaciones clínicas
+                  </label>
+
+                  <textarea
+                    className="form-control"
+                    rows={4}
+                    value={
+                      clinicalObservations
+                    }
+                    onChange={(event) =>
+                      setClinicalObservations(
+                        event.target.value,
+                      )
+                    }
+                    disabled={isSaving}
+                  />
+                </div>
+
+                <div className="col-md-6 mb-3">
+                  <label className="form-label">
+                    Estado
+                  </label>
+
+                  <select
+                    className="form-select"
+                    value={treatmentStatus}
+                    onChange={(event) =>
+                      setTreatmentStatus(
+                        event.target
+                          .value as TreatmentStatus,
+                      )
+                    }
+                    disabled={isSaving}
+                  >
+                    <option value="Suggested">
+                      Sugerido
+                    </option>
+
+                    <option value="Budgeted">
+                      Presupuestado
+                    </option>
+
+                    <option value="In Progress">
+                      En tratamiento
+                    </option>
+
+                    <option value="Finished">
+                      Finalizado
+                    </option>
+
+                    <option value="Cancelled">
+                      Cancelado
+                    </option>
+                  </select>
+                </div>
+
+                {treatmentStatus ===
+                  "Cancelled" && (
+                  <div className="col-md-6 mb-3">
                     <label className="form-label">
-                      Pieza dental
+                      Motivo de cancelación *
                     </label>
 
                     <input
                       type="text"
-                      className={inputClass(
-                        "tooth_code",
-                      )}
-                      value={form.tooth_code}
+                      className="form-control"
+                      value={cancelledReason}
                       onChange={(event) =>
-                        changeField(
-                          "tooth_code",
+                        setCancelledReason(
                           event.target.value,
                         )
                       }
-                      maxLength={20}
-                      placeholder="Ejemplo: 16"
+                      required
                       disabled={isSaving}
                     />
-
-                    {errors.tooth_code ? (
-                      <div className="invalid-feedback">
-                        {errors.tooth_code}
-                      </div>
-                    ) : (
-                      <small className="text-muted">
-                        Puede dejarse vacío para
-                        procedimientos generales.
-                      </small>
-                    )}
                   </div>
-
-                  <div className="col-md-4 mb-3">
-                    <label className="form-label">
-                      Cantidad *
-                    </label>
-
-                    <input
-                      type="number"
-                      className={inputClass(
-                        "quantity",
-                      )}
-                      value={form.quantity}
-                      min={1}
-                      max={32}
-                      onChange={(event) =>
-                        changeField(
-                          "quantity",
-                          event.target.value,
-                        )
-                      }
-                      disabled={isSaving}
-                    />
-
-                    {errors.quantity && (
-                      <div className="invalid-feedback">
-                        {errors.quantity}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="col-md-4 mb-3">
-                    <label className="form-label">
-                      Estado *
-                    </label>
-
-                    <select
-                      className={selectClass(
-                        "treatment_status",
-                      )}
-                      value={
-                        form.treatment_status
-                      }
-                      onChange={(event) =>
-                        changeField(
-                          "treatment_status",
-                          event.target
-                            .value as TreatmentStatus,
-                        )
-                      }
-                      disabled={isSaving}
-                    >
-                      <option value="Suggested">
-                        Sugerido
-                      </option>
-
-                      <option value="Budgeted">
-                        Presupuestado
-                      </option>
-
-                      <option value="In Progress">
-                        En progreso
-                      </option>
-
-                      <option value="Finished">
-                        Finalizado
-                      </option>
-
-                      <option value="Cancelled">
-                        Cancelado
-                      </option>
-                    </select>
-                  </div>
-
-                  <div className="col-12 mb-3">
-                    <label className="form-label">
-                      Notas
-                    </label>
-
-                    <textarea
-                      className={inputClass("notes")}
-                      value={form.notes}
-                      onChange={(event) =>
-                        changeField(
-                          "notes",
-                          event.target.value,
-                        )
-                      }
-                      rows={3}
-                      maxLength={500}
-                      placeholder="Ejemplo: realizar después de controlar la inflamación"
-                      disabled={isSaving}
-                    />
-
-                    {errors.notes ? (
-                      <div className="invalid-feedback">
-                        {errors.notes}
-                      </div>
-                    ) : (
-                      <small className="text-muted">
-                        {form.notes.length}/500
-                      </small>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
+            </div>
 
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={onClose}
-                  disabled={isSaving}
-                >
-                  Cancelar
-                </button>
+            <div className="modal-footer flex-shrink-0 bg-white">
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={onClose}
+                disabled={isSaving}
+              >
+                Cancelar
+              </button>
 
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSaving}
-                >
-                  {isSaving
-                    ? "Guardando..."
-                    : treatment
-                      ? "Guardar cambios"
-                      : "Agregar tratamiento"}
-                </button>
-              </div>
-            </form>
-          </div>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving}
+              >
+                {isSaving
+                  ? "Guardando..."
+                  : treatment
+                    ? "Guardar cambios"
+                    : "Registrar tratamiento"}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
-
-      <div className="modal-backdrop fade show" />
-    </>
+    </div>
   );
 }

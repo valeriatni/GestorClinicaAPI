@@ -1,8 +1,5 @@
 export type AppointmentStatus =
   | "Pending"
-  | "Confirmed"
-  | "Waiting"
-  | "In Consultation"
   | "Attended"
   | "Cancelled"
   | "No Show";

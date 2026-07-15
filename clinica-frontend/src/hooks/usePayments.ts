@@ -6,146 +6,158 @@ import {
 
 import {
   createPayment,
+  getPaymentAppointments,
+  getPaymentBudgets,
+  getPaymentPatients,
+  getPaymentProcedures,
   getPayments,
+  getPaymentTreatments,
 } from "../api/paymentApi";
 
-import {
-  getAppointments,
-} from "../api/appointmentApi";
-
-import {
-  getBudgets,
-} from "../api/budgetApi";
-
-import {
-  getPatients,
-} from "../api/patientApi";
-
-import {
-  getSuggestedTreatments,
-  getTreatmentProcedures,
-} from "../api/suggestedTreatmentApi";
 
 export function usePayments() {
-  const queryClient = useQueryClient();
+  const queryClient =
+    useQueryClient();
 
-  const paymentsQuery = useQuery({
-    queryKey: ["payments"],
-    queryFn: getPayments,
-  });
+  const paymentsQuery =
+    useQuery({
+      queryKey: ["payments"],
+      queryFn: getPayments,
+    });
 
-  const patientsQuery = useQuery({
-    queryKey: [
-      "patients",
-      "payment-options",
-    ],
-    queryFn: () =>
-      getPatients("", true),
-  });
+  const patientsQuery =
+    useQuery({
+      queryKey: [
+        "payment-patients",
+      ],
 
-  const appointmentsQuery = useQuery({
-    queryKey: [
-      "appointments",
-      "payment-options",
-    ],
-    queryFn: getAppointments,
-  });
+      queryFn:
+        getPaymentPatients,
+    });
 
-  const budgetsQuery = useQuery({
-    queryKey: [
-      "budgets",
-      "payment-options",
-    ],
-    queryFn: getBudgets,
-  });
+  const appointmentsQuery =
+    useQuery({
+      queryKey: [
+        "payment-appointments",
+      ],
 
-  const treatmentsQuery = useQuery({
-    queryKey: [
-      "suggested-treatments",
-      "payment-options",
-    ],
-    queryFn: getSuggestedTreatments,
-  });
+      queryFn:
+        getPaymentAppointments,
+    });
 
-  const proceduresQuery = useQuery({
-    queryKey: [
-      "procedures",
-      "payment-options",
-    ],
-    queryFn: getTreatmentProcedures,
-  });
+  const budgetsQuery =
+    useQuery({
+      queryKey: [
+        "payment-budgets",
+      ],
 
-  const createMutation = useMutation({
-    mutationFn: createPayment,
+      queryFn:
+        getPaymentBudgets,
+    });
 
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["payments"],
-      });
+  const treatmentsQuery =
+    useQuery({
+      queryKey: [
+        "payment-treatments",
+      ],
 
-      queryClient.invalidateQueries({
-        queryKey: ["budgets"],
-      });
-    },
-  });
+      queryFn:
+        getPaymentTreatments,
+    });
 
-  let queryError: Error | null = null;
+  const proceduresQuery =
+    useQuery({
+      queryKey: [
+        "payment-procedures",
+      ],
 
-  if (paymentsQuery.error instanceof Error) {
-    queryError = paymentsQuery.error;
-  } else if (
-    patientsQuery.error instanceof Error
-  ) {
-    queryError = patientsQuery.error;
-  } else if (
-    appointmentsQuery.error instanceof Error
-  ) {
-    queryError = appointmentsQuery.error;
-  } else if (
-    budgetsQuery.error instanceof Error
-  ) {
-    queryError = budgetsQuery.error;
-  } else if (
-    treatmentsQuery.error instanceof Error
-  ) {
-    queryError = treatmentsQuery.error;
-  } else if (
-    proceduresQuery.error instanceof Error
-  ) {
-    queryError = proceduresQuery.error;
-  }
+      queryFn:
+        getPaymentProcedures,
+    });
+
+
+  const createMutation =
+    useMutation({
+      mutationFn:
+        createPayment,
+
+      onSuccess:
+        async () => {
+          await Promise.all([
+            queryClient
+              .invalidateQueries({
+                queryKey: [
+                  "payments",
+                ],
+              }),
+
+            queryClient
+              .invalidateQueries({
+                queryKey: [
+                  "payment-budgets",
+                ],
+              }),
+          ]);
+        },
+    });
+
+
+  const queries = [
+    paymentsQuery,
+    patientsQuery,
+    appointmentsQuery,
+    budgetsQuery,
+    treatmentsQuery,
+    proceduresQuery,
+  ];
+
 
   return {
-    payments: paymentsQuery.data ?? [],
-    patients: patientsQuery.data ?? [],
+    payments:
+      paymentsQuery.data ?? [],
+
+    patients:
+      patientsQuery.data ?? [],
+
     appointments:
-      appointmentsQuery.data ?? [],
-    budgets: budgetsQuery.data ?? [],
+      appointmentsQuery.data ??
+      [],
+
+    budgets:
+      budgetsQuery.data ?? [],
+
     treatments:
       treatmentsQuery.data ?? [],
+
     procedures:
       proceduresQuery.data ?? [],
 
     isLoading:
-      paymentsQuery.isLoading ||
-      patientsQuery.isLoading ||
-      appointmentsQuery.isLoading ||
-      budgetsQuery.isLoading ||
-      treatmentsQuery.isLoading ||
-      proceduresQuery.isLoading,
+      queries.some(
+        (query) =>
+          query.isLoading,
+      ),
 
     isError:
-      paymentsQuery.isError ||
-      patientsQuery.isError ||
-      appointmentsQuery.isError ||
-      budgetsQuery.isError ||
-      treatmentsQuery.isError ||
-      proceduresQuery.isError,
+      queries.some(
+        (query) =>
+          query.isError,
+      ),
 
-    queryError,
+    queryError:
+      queries.find(
+        (query) =>
+          query.error,
+      )?.error ?? null,
 
     refetchPayments:
-      paymentsQuery.refetch,
+      async () => {
+        await Promise.all([
+          paymentsQuery.refetch(),
+          budgetsQuery.refetch(),
+          appointmentsQuery.refetch(),
+        ]);
+      },
 
     createMutation,
   };

@@ -11,7 +11,9 @@ from ..models.payment import Payment
 from .patient_serializer import PatientSerializer
 
 
-class MedicalRecordSerializer(serializers.ModelSerializer):
+class MedicalRecordSerializer(
+    serializers.ModelSerializer
+):
 
     class Meta:
         model = MedicalRecord
@@ -38,7 +40,10 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-    def validate_patient(self, patient):
+    def validate_patient(
+        self,
+        patient
+    ):
 
         if patient.is_deleted:
             raise serializers.ValidationError(
@@ -75,22 +80,30 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
 
         return patient
 
-    def validate(self, attrs):
+    def validate(
+        self,
+        attrs
+    ):
 
-        if self.instance and 'patient' in attrs:
-
-            if attrs['patient'].pk != self.instance.patient_id:
-                raise serializers.ValidationError({
-                    'patient': (
-                        'No puede cambiar el paciente de una '
-                        'historia clínica existente.'
-                    )
-                })
+        if (
+            self.instance
+            and 'patient' in attrs
+            and attrs['patient'].pk
+            != self.instance.patient_id
+        ):
+            raise serializers.ValidationError({
+                'patient': (
+                    'No puede cambiar el paciente de una '
+                    'historia clínica existente.'
+                )
+            })
 
         return attrs
 
 
-class MedicalRecordListSerializer(serializers.ModelSerializer):
+class MedicalRecordListSerializer(
+    serializers.ModelSerializer
+):
 
     patient = PatientSerializer(
         read_only=True
@@ -113,7 +126,9 @@ class MedicalRecordListSerializer(serializers.ModelSerializer):
         ]
 
 
-class MedicalRecordDetailSerializer(serializers.ModelSerializer):
+class MedicalRecordDetailSerializer(
+    serializers.ModelSerializer
+):
 
     patient = PatientSerializer(
         read_only=True
@@ -144,7 +159,10 @@ class MedicalRecordDetailSerializer(serializers.ModelSerializer):
             'payments',
         ]
 
-    def get_appointments(self, obj):
+    def get_appointments(
+        self,
+        obj
+    ):
 
         appointments = Appointment.objects.filter(
             patient=obj.patient,
@@ -159,8 +177,12 @@ class MedicalRecordDetailSerializer(serializers.ModelSerializer):
         return [
             {
                 'id': appointment.id,
-                'appointment_date': appointment.appointment_date,
-                'appointment_time': appointment.appointment_time,
+                'appointment_date': (
+                    appointment.appointment_date
+                ),
+                'appointment_time': (
+                    appointment.appointment_time
+                ),
                 'reason': appointment.reason,
                 'appointment_status': (
                     appointment.appointment_status
@@ -172,35 +194,62 @@ class MedicalRecordDetailSerializer(serializers.ModelSerializer):
             for appointment in appointments
         ]
 
-    def get_suggested_treatments(self, obj):
+    def get_suggested_treatments(
+        self,
+        obj
+    ):
 
         treatments = SuggestedTreatment.objects.filter(
-            medical_record=obj
+            medical_record=obj,
+            is_deleted=False,
         ).select_related(
-            'specialist'
+            'specialist',
+            'procedure',
         ).order_by(
-            '-diagnosis_date'
+            '-diagnosis_date',
+            '-created_at',
         )
 
         return [
             {
                 'id': treatment.id,
+                'procedure': (
+                    treatment.procedure_id
+                ),
+                'procedure_name': (
+                    treatment.procedure.name
+                    if treatment.procedure
+                    else None
+                ),
                 'specialist': str(
                     treatment.specialist
                 ),
-                'diagnosis': treatment.diagnosis,
-                'treatment_description': (
-                    treatment.treatment_description
+                'diagnosis': (
+                    treatment.diagnosis
                 ),
-                'diagnosis_date': treatment.diagnosis_date,
-                'treatment_status': treatment.treatment_status,
-                'created_at': treatment.created_at,
-                'updated_at': treatment.updated_at,
+                'clinical_observations': (
+                    treatment.clinical_observations
+                ),
+                'diagnosis_date': (
+                    treatment.diagnosis_date
+                ),
+                'treatment_status': (
+                    treatment.treatment_status
+                ),
+                'created_at': (
+                    treatment.created_at
+                ),
+                'updated_at': (
+                    treatment.updated_at
+                ),
             }
             for treatment in treatments
         ]
 
-    def get_budgets(self, obj):
+    def get_budgets(
+        self,
+        obj
+    ):
 
         budgets = Budget.objects.filter(
             suggested_treatment__medical_record=obj
@@ -211,16 +260,29 @@ class MedicalRecordDetailSerializer(serializers.ModelSerializer):
         return [
             {
                 'id': budget.id,
-                'gross_total': budget.gross_total,
-                'discount': budget.discount,
-                'net_total': budget.net_total,
-                'budget_status': budget.budget_status,
-                'issue_date': budget.issue_date,
+                'gross_total': (
+                    budget.gross_total
+                ),
+                'discount': (
+                    budget.discount
+                ),
+                'net_total': (
+                    budget.net_total
+                ),
+                'budget_status': (
+                    budget.budget_status
+                ),
+                'issue_date': (
+                    budget.issue_date
+                ),
             }
             for budget in budgets
         ]
 
-    def get_payments(self, obj):
+    def get_payments(
+        self,
+        obj
+    ):
 
         payments = Payment.objects.filter(
             Q(
@@ -238,9 +300,15 @@ class MedicalRecordDetailSerializer(serializers.ModelSerializer):
             {
                 'id': payment.id,
                 'amount': payment.amount,
-                'payment_date': payment.payment_date,
-                'payment_method': payment.payment_method,
-                'reference_number': payment.reference_number,
+                'payment_date': (
+                    payment.payment_date
+                ),
+                'payment_method': (
+                    payment.payment_method
+                ),
+                'reference_number': (
+                    payment.reference_number
+                ),
                 'budget': (
                     payment.budget_id
                     if payment.budget_id

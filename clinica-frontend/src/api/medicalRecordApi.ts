@@ -1,168 +1,247 @@
 import type {
   MedicalRecord,
+  MedicalRecordPatient,
   MedicalRecordPayload,
-  MedicalRecordsResponse,
+  PaginatedResponse,
 } from "../types/medicalRecord";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL;
+
 
 function getAuthHeaders() {
-  const token = localStorage.getItem("access_token");
+  const token =
+    localStorage.getItem(
+      "access_token",
+    );
 
   return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
+    "Content-Type":
+      "application/json",
+
+    Authorization:
+      `Bearer ${token}`,
   };
 }
 
-function convertErrorToText(value: unknown): string {
-  if (Array.isArray(value)) {
-    return value.map(String).join(" ");
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return "";
-}
 
 async function getErrorMessage(
   response: Response,
 ): Promise<string> {
-  let data: Record<string, unknown> = {};
+  const data = await response
+    .json()
+    .catch(() => null);
 
-  try {
-    data = await response.json();
-  } catch {
-    return "No se pudo conectar correctamente con el servidor.";
-  }
-
-  if (response.status === 401) {
-    return "Tu sesión venció. Vuelve a iniciar sesión.";
-  }
-
-  if (data.patient) {
-    const message = convertErrorToText(data.patient);
-    const lowerMessage = message.toLowerCase();
+  if (
+    data &&
+    typeof data === "object"
+  ) {
+    const objectData =
+      data as Record<
+        string,
+        unknown
+      >;
 
     if (
-      lowerMessage.includes("already exists") ||
-      lowerMessage.includes("unique")
+      typeof objectData.detail ===
+      "string"
     ) {
-      return "Este paciente ya tiene una historia clínica registrada.";
+      return objectData.detail;
     }
 
-    return message;
-  }
+    const fieldMessages =
+      Object.entries(
+        objectData,
+      ).flatMap(
+        ([field, value]) => {
+          if (Array.isArray(value)) {
+            return value.map(
+              (message) =>
+                `${field}: ${String(
+                  message,
+                )}`,
+            );
+          }
 
-  if (data.medical_history) {
-    return convertErrorToText(data.medical_history);
-  }
+          if (
+            typeof value ===
+            "string"
+          ) {
+            return [
+              `${field}: ${value}`,
+            ];
+          }
 
-  if (data.allergies) {
-    return convertErrorToText(data.allergies);
-  }
-
-  if (data.general_observations) {
-    return convertErrorToText(
-      data.general_observations,
-    );
-  }
-
-  if (data.non_field_errors) {
-    const message = convertErrorToText(
-      data.non_field_errors,
-    );
+          return [];
+        },
+      );
 
     if (
-      message.toLowerCase().includes("unique") ||
-      message.toLowerCase().includes("already exists")
+      fieldMessages.length >
+      0
     ) {
-      return "Este paciente ya tiene una historia clínica registrada.";
+      return fieldMessages.join(
+        " ",
+      );
     }
-
-    return message;
   }
 
-  if (data.detail) {
-    return convertErrorToText(data.detail);
-  }
-
-  if (data.error) {
-    return convertErrorToText(data.error);
-  }
-
-  if (data.message) {
-    return convertErrorToText(data.message);
-  }
-
-  const firstError = Object.values(data)[0];
-  const message = convertErrorToText(firstError);
-
-  return message || "No se pudo completar la operación.";
+  return (
+    `Error del servidor (${response.status}).`
+  );
 }
+
+
+function readList<T>(
+  data:
+    | T[]
+    | PaginatedResponse<T>,
+): T[] {
+  return Array.isArray(data)
+    ? data
+    : data.results ?? [];
+}
+
+
+export async function getMedicalRecordPatients(): Promise<
+  MedicalRecordPatient[]
+> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/patients/?show_inactive=true`,
+    {
+      headers:
+        getAuthHeaders(),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+      ),
+    );
+  }
+
+  const data:
+    | MedicalRecordPatient[]
+    | PaginatedResponse<MedicalRecordPatient> =
+    await response.json();
+
+  return readList(data);
+}
+
 
 export async function getMedicalRecords(): Promise<
   MedicalRecord[]
 > {
   const response = await fetch(
-    `${API_BASE_URL}/api/medical-records/`,
+    `${API_BASE_URL}/api/medical-records/?show_inactive=true`,
     {
-      method: "GET",
-      headers: getAuthHeaders(),
+      headers:
+        getAuthHeaders(),
     },
   );
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response));
+    throw new Error(
+      await getErrorMessage(
+        response,
+      ),
+    );
   }
 
   const data:
     | MedicalRecord[]
-    | MedicalRecordsResponse = await response.json();
+    | PaginatedResponse<MedicalRecord> =
+    await response.json();
 
-  if (Array.isArray(data)) {
-    return data;
-  }
-
-  return data.results;
+  return readList(data);
 }
 
+
 export async function createMedicalRecord(
-  medicalRecord: MedicalRecordPayload,
+  payload:
+    MedicalRecordPayload,
 ): Promise<MedicalRecord> {
   const response = await fetch(
     `${API_BASE_URL}/api/medical-records/`,
     {
       method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(medicalRecord),
+
+      headers:
+        getAuthHeaders(),
+
+      body: JSON.stringify(
+        payload,
+      ),
     },
   );
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response));
+    throw new Error(
+      await getErrorMessage(
+        response,
+      ),
+    );
   }
 
   return response.json();
 }
 
+
 export async function updateMedicalRecord(
   id: number,
-  medicalRecord: MedicalRecordPayload,
+  payload:
+    MedicalRecordPayload,
 ): Promise<MedicalRecord> {
   const response = await fetch(
     `${API_BASE_URL}/api/medical-records/${id}/`,
     {
       method: "PATCH",
-      headers: getAuthHeaders(),
-      body: JSON.stringify(medicalRecord),
+
+      headers:
+        getAuthHeaders(),
+
+      body: JSON.stringify(
+        payload,
+      ),
     },
   );
 
   if (!response.ok) {
-    throw new Error(await getErrorMessage(response));
+    throw new Error(
+      await getErrorMessage(
+        response,
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+
+export async function reactivateMedicalRecord(
+  id: number,
+): Promise<MedicalRecord> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/medical-records/${id}/reactivate/`,
+    {
+      method: "PATCH",
+
+      headers:
+        getAuthHeaders(),
+
+      body: JSON.stringify({}),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getErrorMessage(
+        response,
+      ),
+    );
   }
 
   return response.json();

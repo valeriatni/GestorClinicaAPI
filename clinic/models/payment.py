@@ -168,10 +168,14 @@ class Payment(models.Model):
                     )
                 })
 
-            if self.appointment.appointment_status != 'Attended':
+            if self.appointment.appointment_status in [
+                'Cancelled',
+                'No Show',
+            ]:
                 raise ValidationError({
                     'appointment': (
-                        'Solo se puede pagar una cita que fue atendida.'
+                        'No puede registrar un pago para una cita '
+                        'cancelada o no asistida.'
                     )
                 })
 

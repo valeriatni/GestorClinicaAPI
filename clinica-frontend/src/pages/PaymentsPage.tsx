@@ -7,10 +7,6 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
-import {
-  updateBudget,
-} from "../api/budgetApi";
-
 import PaymentModal from "../components/payments/PaymentModal";
 
 import {
@@ -19,9 +15,94 @@ import {
 
 import type {
   Payment,
+  PaymentAppointment,
+  PaymentBudget,
   PaymentMethod,
   PaymentPayload,
+  PaymentProcedure,
+  PaymentTreatment,
 } from "../types/payment";
+
+
+function getRelationId(
+  relation: unknown,
+): number | null {
+  if (
+    relation === null ||
+    relation === undefined
+  ) {
+    return null;
+  }
+
+  if (
+    typeof relation === "number" ||
+    typeof relation === "string"
+  ) {
+    const id = Number(relation);
+
+    return (
+      Number.isInteger(id) &&
+      id > 0
+        ? id
+        : null
+    );
+  }
+
+  if (
+    typeof relation === "object" &&
+    "id" in relation
+  ) {
+    const id = Number(
+      (
+        relation as {
+          id: unknown;
+        }
+      ).id,
+    );
+
+    return (
+      Number.isInteger(id) &&
+      id > 0
+        ? id
+        : null
+    );
+  }
+
+  return null;
+}
+
+
+function getRelationObject<
+  T extends {
+    id: number;
+  },
+>(
+  relation:
+    | number
+    | T
+    | null,
+): T | null {
+  return (
+    relation &&
+    typeof relation ===
+      "object"
+  )
+    ? relation
+    : null;
+}
+
+
+function isBudgetUnavailable(
+  status: string,
+): boolean {
+  return [
+    "Rejected",
+    "Completed",
+    "Cancelled",
+    "Closed",
+  ].includes(status);
+}
+
 
 function getMethodText(
   method: PaymentMethod,
@@ -39,10 +120,13 @@ function getMethodText(
   return methods[method];
 }
 
+
 function formatDateTime(
   dateValue: string,
 ): string {
-  const date = new Date(dateValue);
+  const date = new Date(
+    dateValue,
+  );
 
   return new Intl.DateTimeFormat(
     "es-PE",
@@ -55,6 +139,7 @@ function formatDateTime(
     },
   ).format(date);
 }
+
 
 function formatDate(
   dateValue: string,
@@ -73,6 +158,7 @@ function formatDate(
   ).format(date);
 }
 
+
 export default function PaymentsPage() {
   const [
     searchParams,
@@ -86,7 +172,9 @@ export default function PaymentsPage() {
     searchParams.get("budget");
 
   const appointmentFromUrl =
-    searchParams.get("appointment");
+    searchParams.get(
+      "appointment",
+    );
 
   const [
     selectedPatientId,
@@ -96,15 +184,21 @@ export default function PaymentsPage() {
   const [
     initialBudgetId,
     setInitialBudgetId,
-  ] = useState<number | null>(null);
+  ] = useState<number | null>(
+    null,
+  );
 
   const [
     initialAppointmentId,
     setInitialAppointmentId,
-  ] = useState<number | null>(null);
+  ] = useState<number | null>(
+    null,
+  );
 
-  const [showModal, setShowModal] =
-    useState(false);
+  const [
+    showModal,
+    setShowModal,
+  ] = useState(false);
 
   const [
     successMessage,
@@ -130,23 +224,24 @@ export default function PaymentsPage() {
     createMutation,
   } = usePayments();
 
+
   useEffect(() => {
-    if (patients.length === 0) {
+    if (
+      isLoading ||
+      !patientFromUrl
+    ) {
       return;
     }
 
-    if (!patientFromUrl) {
-      return;
-    }
+    const patientId =
+      Number(patientFromUrl);
 
-    const patientId = Number(
-      patientFromUrl,
-    );
-
-    const patient = patients.find(
-      (currentPatient) =>
-        currentPatient.id === patientId,
-    );
+    const patient =
+      patients.find(
+        (currentPatient) =>
+          currentPatient.id ===
+          patientId,
+      );
 
     if (!patient) {
       setErrorMessage(
@@ -155,7 +250,9 @@ export default function PaymentsPage() {
 
       setSearchParams(
         {},
-        { replace: true },
+        {
+          replace: true,
+        },
       );
 
       return;
@@ -166,22 +263,32 @@ export default function PaymentsPage() {
     );
 
     if (budgetFromUrl) {
-      const budgetId = Number(
-        budgetFromUrl,
-      );
+      const budgetId =
+        Number(budgetFromUrl);
 
-      const budget = budgets.find(
-        (currentBudget) =>
-          currentBudget.id ===
-          budgetId,
-      );
+      const budget =
+        budgets.find(
+          (currentBudget) =>
+            currentBudget.id ===
+            budgetId,
+        );
 
       if (
         !budget ||
-        budget.patient !== patient.id
+        getRelationId(
+          budget.patient,
+        ) !== patient.id
       ) {
         setErrorMessage(
           "El presupuesto no pertenece al paciente seleccionado.",
+        );
+      } else if (
+        isBudgetUnavailable(
+          budget.budget_status,
+        )
+      ) {
+        setErrorMessage(
+          "El presupuesto seleccionado no está disponible para nuevos pagos.",
         );
       } else {
         setInitialBudgetId(
@@ -197,21 +304,25 @@ export default function PaymentsPage() {
     } else if (
       appointmentFromUrl
     ) {
-      const appointmentId = Number(
-        appointmentFromUrl,
-      );
+      const appointmentId =
+        Number(
+          appointmentFromUrl,
+        );
 
       const appointment =
         appointments.find(
-          (currentAppointment) =>
+          (
+            currentAppointment,
+          ) =>
             currentAppointment.id ===
             appointmentId,
         );
 
       if (
         !appointment ||
-        appointment.patient !==
-          patient.id
+        getRelationId(
+          appointment.patient,
+        ) !== patient.id
       ) {
         setErrorMessage(
           "La cita no pertenece al paciente seleccionado.",
@@ -228,9 +339,12 @@ export default function PaymentsPage() {
 
     setSearchParams(
       {},
-      { replace: true },
+      {
+        replace: true,
+      },
     );
   }, [
+    isLoading,
     patientFromUrl,
     budgetFromUrl,
     appointmentFromUrl,
@@ -240,83 +354,183 @@ export default function PaymentsPage() {
     setSearchParams,
   ]);
 
+
   const selectedPatient =
     patients.find(
       (patient) =>
         patient.id ===
-        Number(selectedPatientId),
+        Number(
+          selectedPatientId,
+        ),
     );
+
+
+  function findBudget(
+    relation:
+      Payment["budget"],
+  ): PaymentBudget | null {
+    const nested =
+      getRelationObject(
+        relation,
+      );
+
+    if (nested) {
+      return nested;
+    }
+
+    const id =
+      getRelationId(
+        relation,
+      );
+
+    return (
+      budgets.find(
+        (budget) =>
+          budget.id === id,
+      ) ?? null
+    );
+  }
+
+
+  function findAppointment(
+    relation:
+      Payment["appointment"],
+  ): PaymentAppointment | null {
+    const nested =
+      getRelationObject(
+        relation,
+      );
+
+    if (nested) {
+      return nested;
+    }
+
+    const id =
+      getRelationId(
+        relation,
+      );
+
+    return (
+      appointments.find(
+        (appointment) =>
+          appointment.id === id,
+      ) ?? null
+    );
+  }
+
 
   function getPaymentPatientId(
     payment: Payment,
   ): number | null {
-    if (payment.budget) {
-      const budget = budgets.find(
-        (currentBudget) =>
-          currentBudget.id ===
-          payment.budget,
+    const budget =
+      findBudget(
+        payment.budget,
       );
 
-      return budget?.patient ?? null;
+    if (budget) {
+      return getRelationId(
+        budget.patient,
+      );
     }
 
-    if (payment.appointment) {
-      const appointment =
-        appointments.find(
-          (currentAppointment) =>
-            currentAppointment.id ===
-            payment.appointment,
-        );
+    const appointment =
+      findAppointment(
+        payment.appointment,
+      );
 
-      return appointment?.patient ?? null;
-    }
-
-    return null;
+    return appointment
+      ? getRelationId(
+          appointment.patient,
+        )
+      : null;
   }
+
 
   const patientPayments =
     payments.filter(
       (payment) =>
-        getPaymentPatientId(payment) ===
-        Number(selectedPatientId),
+        getPaymentPatientId(
+          payment,
+        ) ===
+        Number(
+          selectedPatientId,
+        ),
     );
+
 
   const totalPatientPayments =
     patientPayments.reduce(
       (total, payment) =>
-        total + Number(payment.amount),
+        total +
+        Number(payment.amount),
       0,
     );
 
-  function findProcedureByBudget(
-    budgetId: number,
-  ) {
-    const budget = budgets.find(
-      (currentBudget) =>
-        currentBudget.id === budgetId,
-    );
 
-    const treatment =
+  function findTreatment(
+    budget:
+      PaymentBudget,
+  ): PaymentTreatment | null {
+    const relation =
+      budget
+        .suggested_treatment;
+
+    if (
+      typeof relation ===
+      "object"
+    ) {
+      return relation;
+    }
+
+    return (
       treatments.find(
-        (currentTreatment) =>
-          currentTreatment.id ===
-          budget?.suggested_treatment,
-      );
-
-    return procedures.find(
-      (procedure) =>
-        procedure.id ===
-        treatment?.procedure,
+        (treatment) =>
+          treatment.id ===
+          relation,
+      ) ?? null
     );
   }
+
+
+  function findProcedure(
+    treatment:
+      PaymentTreatment | null,
+  ): PaymentProcedure | null {
+    if (!treatment?.procedure) {
+      return null;
+    }
+
+    if (
+      typeof treatment.procedure ===
+      "object"
+    ) {
+      return treatment.procedure;
+    }
+
+    return (
+      procedures.find(
+        (procedure) =>
+          procedure.id ===
+          treatment.procedure,
+      ) ?? null
+    );
+  }
+
 
   function getPaymentConcept(
     payment: Payment,
   ): string {
-    if (payment.budget) {
+    const budget =
+      findBudget(
+        payment.budget,
+      );
+
+    if (budget) {
       const procedure =
-        findProcedureByBudget(
-          payment.budget,
+        findProcedure(
+          findTreatment(
+            budget,
+          ),
         );
 
       return `Presupuesto - ${
@@ -325,20 +539,15 @@ export default function PaymentsPage() {
       }`;
     }
 
-    if (payment.appointment) {
-      const appointment =
-        appointments.find(
-          (currentAppointment) =>
-            currentAppointment.id ===
-            payment.appointment,
-        );
+    const appointment =
+      findAppointment(
+        payment.appointment,
+      );
 
-      if (!appointment) {
-        return "Pago de cita";
-      }
-
+    if (appointment) {
       return `Cita ${formatDate(
-        appointment.appointment_date,
+        appointment
+          .appointment_date,
       )} ${appointment.appointment_time.slice(
         0,
         5,
@@ -347,6 +556,7 @@ export default function PaymentsPage() {
 
     return "Concepto no identificado";
   }
+
 
   function openPaymentModal() {
     setSuccessMessage("");
@@ -360,28 +570,34 @@ export default function PaymentsPage() {
       return;
     }
 
-    if (!selectedPatient.is_active) {
+    if (
+      !selectedPatient.is_active
+    ) {
       setErrorMessage(
-        "El paciente está inactivo. Revise su estado antes de registrar nuevos pagos.",
+        "El paciente está inactivo.",
       );
 
       return;
     }
 
-    const hasBudgets = budgets.some(
-      (budget) =>
-        budget.patient ===
-          selectedPatient.id &&
-        budget.budget_status !==
-          "Cancelled" &&
-        budget.budget_status !==
-          "Closed",
-    );
+    const hasBudgets =
+      budgets.some(
+        (budget) =>
+          getRelationId(
+            budget.patient,
+          ) ===
+            selectedPatient.id &&
+          !isBudgetUnavailable(
+            budget.budget_status,
+          ),
+      );
 
     const hasAppointments =
       appointments.some(
         (appointment) =>
-          appointment.patient ===
+          getRelationId(
+            appointment.patient,
+          ) ===
             selectedPatient.id &&
           appointment
             .appointment_status !==
@@ -403,12 +619,17 @@ export default function PaymentsPage() {
     }
 
     setInitialBudgetId(null);
-    setInitialAppointmentId(null);
+    setInitialAppointmentId(
+      null,
+    );
+
     setShowModal(true);
   }
 
+
   async function savePayment(
-    paymentData: PaymentPayload,
+    paymentData:
+      PaymentPayload,
   ) {
     if (!selectedPatient) {
       throw new Error(
@@ -416,98 +637,37 @@ export default function PaymentsPage() {
       );
     }
 
-    if (
-      paymentData.budget &&
-      paymentData.appointment
-    ) {
-      throw new Error(
-        "Debe seleccionar una cita o un presupuesto, pero no ambos.",
-      );
-    }
+    const createdPayment =
+      await createMutation
+        .mutateAsync(
+          paymentData,
+        );
 
-    if (
-      !paymentData.budget &&
-      !paymentData.appointment
-    ) {
-      throw new Error(
-        "Debe seleccionar qué está pagando el paciente.",
-      );
-    }
-
-    await createMutation.mutateAsync(
-      paymentData,
-    );
+    await refetchPayments();
 
     if (paymentData.budget) {
-      const budget = budgets.find(
-        (currentBudget) =>
-          currentBudget.id ===
-          paymentData.budget,
-      );
-
-      if (!budget) {
-        throw new Error(
-          "El pago se registró, pero no se encontró el presupuesto para actualizar su estado.",
-        );
-      }
-
-      const previousPayments =
-        payments
-          .filter(
-            (payment) =>
-              payment.budget ===
-              budget.id,
-          )
-          .reduce(
-            (total, payment) =>
-              total +
-              Number(payment.amount),
-            0,
-          );
-
-      const newPaidTotal =
-        previousPayments +
-        Number(paymentData.amount);
-
-      const budgetTotal = Number(
-        budget.net_total,
-      );
+      const remaining =
+        createdPayment
+          .remaining_balance;
 
       if (
-        newPaidTotal >= budgetTotal
+        remaining !== null &&
+        Number(remaining) <= 0
       ) {
-        await updateBudget(
-          budget.id,
-          {
-            budget_status: "Closed",
-          },
-        );
-
         setSuccessMessage(
-          "El pago se registró correctamente. El presupuesto quedó completamente pagado y cerrado.",
+          "El pago se registró correctamente. El presupuesto quedó completamente pagado.",
+        );
+      } else if (
+        remaining !== null
+      ) {
+        setSuccessMessage(
+          `El pago se registró correctamente. Saldo pendiente: S/ ${Number(
+            remaining,
+          ).toFixed(2)}.`,
         );
       } else {
-        if (
-          budget.budget_status ===
-          "Draft"
-        ) {
-          await updateBudget(
-            budget.id,
-            {
-              budget_status:
-                "Approved",
-            },
-          );
-        }
-
-        const balance =
-          budgetTotal -
-          newPaidTotal;
-
         setSuccessMessage(
-          `El pago se registró correctamente. Saldo pendiente: S/ ${balance.toFixed(
-            2,
-          )}.`,
+          "El pago del presupuesto se registró correctamente.",
         );
       }
     } else {
@@ -518,26 +678,31 @@ export default function PaymentsPage() {
 
     setShowModal(false);
     setInitialBudgetId(null);
-    setInitialAppointmentId(null);
+    setInitialAppointmentId(
+      null,
+    );
   }
+
 
   return (
     <div className="container-fluid py-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2>Pagos</h2>
+          <h2>
+            Pagos
+          </h2>
 
           <p className="text-muted mb-0">
-            Registre pagos de citas o
-            presupuestos y consulte el
-            historial del paciente.
+            Registre pagos de citas o presupuestos y consulte el historial del paciente.
           </p>
         </div>
 
         <button
           type="button"
           className="btn btn-success"
-          onClick={openPaymentModal}
+          onClick={
+            openPaymentModal
+          }
         >
           Registrar pago
         </button>
@@ -579,7 +744,9 @@ export default function PaymentsPage() {
 
           <select
             className="form-select"
-            value={selectedPatientId}
+            value={
+              selectedPatientId
+            }
             onChange={(event) => {
               setSelectedPatientId(
                 event.target.value,
@@ -594,25 +761,23 @@ export default function PaymentsPage() {
               Seleccione un paciente
             </option>
 
-            {patients.map((patient) => (
-              <option
-                key={patient.id}
-                value={patient.id}
-              >
-                {patient.first_name}{" "}
-                {patient.last_name} - DNI{" "}
-                {patient.dni}
-                {!patient.is_active
-                  ? " - Inactivo"
-                  : ""}
-              </option>
-            ))}
+            {patients.map(
+              (patient) => (
+                <option
+                  key={patient.id}
+                  value={patient.id}
+                >
+                  {patient.first_name}{" "}
+                  {patient.last_name}
+                  {" - DNI "}
+                  {patient.dni}
+                  {!patient.is_active
+                    ? " - Inactivo"
+                    : ""}
+                </option>
+              ),
+            )}
           </select>
-
-          <small className="text-muted">
-            Busque siempre al paciente por
-            nombre completo o DNI.
-          </small>
         </div>
       </div>
 
@@ -629,7 +794,7 @@ export default function PaymentsPage() {
       {isError && (
         <div className="alert alert-danger">
           <p>
-            {queryError
+            {queryError instanceof Error
               ? queryError.message
               : "No se pudo cargar la información de pagos."}
           </p>
@@ -650,8 +815,7 @@ export default function PaymentsPage() {
         !isError &&
         !selectedPatient && (
           <div className="alert alert-info">
-            Seleccione un paciente para
-            consultar sus pagos.
+            Seleccione un paciente para consultar sus pagos.
           </div>
         )}
 
@@ -662,12 +826,15 @@ export default function PaymentsPage() {
             <div className="card mb-4">
               <div className="card-body">
                 <h5 className="mb-1">
-                  {selectedPatient.first_name}{" "}
-                  {selectedPatient.last_name}
+                  {selectedPatient
+                    .first_name}{" "}
+                  {selectedPatient
+                    .last_name}
                 </h5>
 
                 <p className="text-muted mb-2">
-                  DNI: {selectedPatient.dni}
+                  DNI:{" "}
+                  {selectedPatient.dni}
                 </p>
 
                 <strong>
@@ -691,8 +858,7 @@ export default function PaymentsPage() {
                 {patientPayments.length ===
                   0 && (
                   <div className="alert alert-info">
-                    El paciente todavía no
-                    tiene pagos registrados.
+                    El paciente todavía no tiene pagos registrados.
                   </div>
                 )}
 
@@ -714,11 +880,14 @@ export default function PaymentsPage() {
                         {patientPayments.map(
                           (payment) => (
                             <tr
-                              key={payment.id}
+                              key={
+                                payment.id
+                              }
                             >
                               <td>
                                 {formatDateTime(
-                                  payment.payment_date,
+                                  payment
+                                    .payment_date,
                                 )}
                               </td>
 
@@ -732,19 +901,24 @@ export default function PaymentsPage() {
                                 <strong>
                                   S/{" "}
                                   {Number(
-                                    payment.amount,
-                                  ).toFixed(2)}
+                                    payment
+                                      .amount,
+                                  ).toFixed(
+                                    2,
+                                  )}
                                 </strong>
                               </td>
 
                               <td>
                                 {getMethodText(
-                                  payment.payment_method,
+                                  payment
+                                    .payment_method,
                                 )}
                               </td>
 
                               <td>
-                                {payment.reference_number ||
+                                {payment
+                                  .reference_number ||
                                   "Sin referencia"}
                               </td>
                             </tr>
@@ -776,14 +950,20 @@ export default function PaymentsPage() {
               appointments
             }
             budgets={budgets}
-            treatments={treatments}
-            procedures={procedures}
+            treatments={
+              treatments
+            }
+            procedures={
+              procedures
+            }
             isSaving={
               createMutation.isPending
             }
             onClose={() => {
               setShowModal(false);
-              setInitialBudgetId(null);
+              setInitialBudgetId(
+                null,
+              );
               setInitialAppointmentId(
                 null,
               );

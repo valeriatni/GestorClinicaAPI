@@ -5,6 +5,7 @@ import {
 } from "react";
 
 import {
+  useNavigate,
   useSearchParams,
 } from "react-router-dom";
 
@@ -15,10 +16,16 @@ import {
 } from "../hooks/useSuggestedTreatments";
 
 import type {
+  ProcedureOption,
   SuggestedTreatment,
   SuggestedTreatmentPayload,
+  TreatmentSpecialist,
   TreatmentStatus,
 } from "../types/suggestedTreatment";
+
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL;
 
 
 function getTreatmentStatusText(
@@ -28,7 +35,7 @@ function getTreatmentStatusText(
     Record<TreatmentStatus, string> = {
       Suggested: "Sugerido",
       Budgeted: "Presupuestado",
-      "In Progress": "En progreso",
+      "In Progress": "En tratamiento",
       Finished: "Finalizado",
       Cancelled: "Cancelado",
     };
@@ -42,20 +49,12 @@ function getTreatmentStatusClass(
 ): string {
   const statusClasses:
     Record<TreatmentStatus, string> = {
-      Suggested:
-        "text-bg-info",
-
-      Budgeted:
-        "text-bg-primary",
-
+      Suggested: "text-bg-info",
+      Budgeted: "text-bg-primary",
       "In Progress":
         "text-bg-warning",
-
-      Finished:
-        "text-bg-success",
-
-      Cancelled:
-        "text-bg-danger",
+      Finished: "text-bg-success",
+      Cancelled: "text-bg-danger",
     };
 
   return statusClasses[status];
@@ -85,20 +84,126 @@ function parsePositiveId(
 }
 
 
+function getRelationId(
+  value:
+    | number
+    | {
+        id: number;
+      }
+    | null
+    | undefined,
+): number | null {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return null;
+  }
+
+  return typeof value === "number"
+    ? value
+    : value.id;
+}
+
+
+function getProcedure(
+  treatment: SuggestedTreatment,
+  procedures: ProcedureOption[],
+): ProcedureOption | undefined {
+  if (
+    treatment.procedure &&
+    typeof treatment.procedure ===
+      "object"
+  ) {
+    return treatment.procedure;
+  }
+
+  const procedureId =
+    getRelationId(
+      treatment.procedure,
+    );
+
+  if (procedureId === null) {
+    return undefined;
+  }
+
+  return procedures.find(
+    (procedure) =>
+      procedure.id ===
+      procedureId,
+  );
+}
+
+
+function getSpecialist(
+  treatment: SuggestedTreatment,
+  specialists:
+    TreatmentSpecialist[],
+): TreatmentSpecialist | undefined {
+  if (
+    typeof treatment.specialist ===
+    "object"
+  ) {
+    return treatment.specialist;
+  }
+
+  const specialistId =
+    getRelationId(
+      treatment.specialist,
+    );
+
+  if (specialistId === null) {
+    return undefined;
+  }
+
+  return specialists.find(
+    (specialist) =>
+      specialist.id ===
+      specialistId,
+  );
+}
+
+
+function getAuthHeaders() {
+  const token =
+    localStorage.getItem(
+      "access_token",
+    );
+
+  return {
+    "Content-Type":
+      "application/json",
+
+    Authorization:
+      `Bearer ${token}`,
+  };
+}
+
+
 export default function SuggestedTreatmentsPage() {
+  const navigate = useNavigate();
+
   const [searchParams] =
     useSearchParams();
 
-  /*
-   * La creación de un tratamiento debe
-   * abrirse desde una historia clínica:
-   *
-   * /suggested-treatments?medical_record=3
-   */
   const medicalRecordId =
     parsePositiveId(
       searchParams.get(
         "medical_record",
+      ),
+    );
+
+  const patientId =
+    parsePositiveId(
+      searchParams.get(
+        "patient",
+      ),
+    );
+
+  const appointmentId =
+    parsePositiveId(
+      searchParams.get(
+        "appointment",
       ),
     );
 
@@ -147,32 +252,10 @@ export default function SuggestedTreatmentsPage() {
     setErrorMessage,
   ] = useState("");
 
-
-  function findProcedure(
-    procedureId:
-      number | null,
-  ) {
-    if (procedureId === null) {
-      return undefined;
-    }
-
-    return procedures.find(
-      (procedure) =>
-        procedure.id ===
-        procedureId,
-    );
-  }
-
-
-  function findSpecialist(
-    specialistId: number,
-  ) {
-    return specialists.find(
-      (specialist) =>
-        specialist.id ===
-        specialistId,
-    );
-  }
+  const [
+    isFinishing,
+    setIsFinishing,
+  ] = useState(false);
 
 
   function clearMessages() {
@@ -206,16 +289,13 @@ export default function SuggestedTreatmentsPage() {
 
     if (!medicalRecordId) {
       setErrorMessage(
-        "Para crear un tratamiento debe ingresar desde la historia clínica del paciente.",
+        "Para registrar un tratamiento debe ingresar desde la historia clínica del paciente.",
       );
 
       return;
     }
 
-    setSelectedTreatment(
-      null,
-    );
-
+    setSelectedTreatment(null);
     setShowModal(true);
   }
 
@@ -265,30 +345,21 @@ export default function SuggestedTreatmentsPage() {
     }
 
     setShowModal(false);
-
-    setSelectedTreatment(
-      null,
-    );
+    setSelectedTreatment(null);
   }
 
 
   const treatmentsToDisplay =
     useMemo(() => {
-      /*
-       * Cuando se abre desde una historia
-       * clínica, muestra solo sus tratamientos.
-       *
-       * Cuando se abre sin parámetro, muestra
-       * todos los tratamientos disponibles.
-       */
       if (!medicalRecordId) {
         return treatments;
       }
 
       return treatments.filter(
         (treatment) =>
-          treatment.medical_record ===
-          medicalRecordId,
+          getRelationId(
+            treatment.medical_record,
+          ) === medicalRecordId,
       );
     }, [
       treatments,
@@ -305,32 +376,45 @@ export default function SuggestedTreatmentsPage() {
       return treatmentsToDisplay.filter(
         (treatment) => {
           const procedure =
-            findProcedure(
-              treatment.procedure,
+            getProcedure(
+              treatment,
+              procedures,
             );
 
           const specialist =
-            findSpecialist(
-              treatment.specialist,
+            getSpecialist(
+              treatment,
+              specialists,
             );
 
           const searchableText = `
-            Historia clínica ${treatment.medical_record}
+            Historia clínica ${
+              getRelationId(
+                treatment.medical_record,
+              ) ?? ""
+            }
+            ${treatment.diagnosis}
+            ${
+              treatment.clinical_observations ??
+              ""
+            }
+            ${treatment.diagnosis_date}
             ${procedure?.name ?? ""}
             ${procedure?.description ?? ""}
             ${specialist?.first_name ?? ""}
             ${specialist?.last_name ?? ""}
-            ${specialist?.license_number ?? ""}
-            ${treatment.tooth_code ?? ""}
-            ${treatment.quantity}
-            ${treatment.notes ?? ""}
+            ${
+              specialist?.license_number ??
+              ""
+            }
             ${getTreatmentStatusText(
               treatment.treatment_status,
             )}
           `.toLowerCase();
 
-          return searchableText
-            .includes(search);
+          return searchableText.includes(
+            search,
+          );
         },
       );
     }, [
@@ -343,8 +427,112 @@ export default function SuggestedTreatmentsPage() {
 
   const modalMedicalRecordId =
     selectedTreatment
-      ?.medical_record ??
-    medicalRecordId;
+      ? getRelationId(
+          selectedTreatment
+            .medical_record,
+        )
+      : medicalRecordId;
+
+
+  async function finishAttention() {
+    clearMessages();
+
+    if (!appointmentId) {
+      setErrorMessage(
+        "No se encontró la cita que se está atendiendo.",
+      );
+
+      return;
+    }
+
+    if (!medicalRecordId) {
+      setErrorMessage(
+        "No se encontró la historia clínica.",
+      );
+
+      return;
+    }
+
+    if (
+      treatmentsToDisplay.length ===
+      0
+    ) {
+      setErrorMessage(
+        "Debe registrar al menos un tratamiento sugerido antes de finalizar la atención.",
+      );
+
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "¿Confirma que terminó la atención del paciente?",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsFinishing(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/appointments/` +
+          `${appointmentId}/attend/`,
+        {
+          method: "PATCH",
+
+          headers:
+            getAuthHeaders(),
+
+          body: JSON.stringify({}),
+        },
+      );
+
+      const data = await response
+        .json()
+        .catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ??
+            data?.error ??
+            "No se pudo finalizar la atención.",
+        );
+      }
+
+      navigate(
+        "/my-appointments",
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo finalizar la atención.",
+      );
+    } finally {
+      setIsFinishing(false);
+    }
+  }
+
+
+  function returnToMedicalRecord() {
+    if (patientId) {
+      const appointmentParameter =
+        appointmentId
+          ? `&appointment=${appointmentId}`
+          : "";
+
+      navigate(
+        `/medical-records?patient=${patientId}` +
+          `${appointmentParameter}`,
+      );
+
+      return;
+    }
+
+    navigate("/medical-records");
+  }
 
 
   return (
@@ -352,24 +540,49 @@ export default function SuggestedTreatmentsPage() {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           <h2>
-            Tratamientos sugeridos
+            Atención y tratamientos
           </h2>
 
           <p className="text-muted mb-0">
             {medicalRecordId
               ? `Tratamientos de la historia clínica #${medicalRecordId}.`
-              : "Consulta general de tratamientos registrados."}
+              : "Consulta general de tratamientos sugeridos."}
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={openCreateModal}
-        >
-          Nuevo tratamiento
-        </button>
+        <div className="d-flex gap-2">
+          {medicalRecordId && (
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={
+                returnToMedicalRecord
+              }
+            >
+              Volver a historia clínica
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={openCreateModal}
+          >
+            Nuevo tratamiento
+          </button>
+        </div>
       </div>
+
+      {appointmentId && (
+        <div className="alert alert-info">
+          Atención correspondiente a la
+          cita número{" "}
+          <strong>
+            {appointmentId}
+          </strong>
+          .
+        </div>
+      )}
 
       {successMessage && (
         <div className="alert alert-success alert-dismissible">
@@ -401,10 +614,10 @@ export default function SuggestedTreatmentsPage() {
 
       {!medicalRecordId && (
         <div className="alert alert-info">
-          Puede consultar los tratamientos,
-          pero para registrar uno nuevo debe
-          ingresar desde la historia clínica
-          correspondiente.
+          Puede consultar los tratamientos.
+          Para registrar uno nuevo, ingrese
+          desde la historia clínica del
+          paciente.
         </div>
       )}
 
@@ -422,7 +635,7 @@ export default function SuggestedTreatmentsPage() {
               <input
                 type="text"
                 className="form-control"
-                placeholder="Procedimiento, especialista, pieza dental, notas o estado"
+                placeholder="Diagnóstico, procedimiento, especialista, observaciones o estado"
                 value={searchInput}
                 onChange={(event) =>
                   setSearchInput(
@@ -475,8 +688,7 @@ export default function SuggestedTreatmentsPage() {
           {isError && (
             <div className="alert alert-danger">
               <p className="mb-3">
-                {queryError
-                  instanceof Error
+                {queryError instanceof Error
                   ? queryError.message
                   : "No se pudieron cargar los tratamientos sugeridos."}
               </p>
@@ -495,8 +707,8 @@ export default function SuggestedTreatmentsPage() {
 
           {!isLoading &&
             !isError &&
-            filteredTreatments
-              .length === 0 && (
+            filteredTreatments.length ===
+              0 && (
               <div className="alert alert-info mb-0">
                 No existen tratamientos
                 sugeridos que coincidan con
@@ -506,14 +718,22 @@ export default function SuggestedTreatmentsPage() {
 
           {!isLoading &&
             !isError &&
-            filteredTreatments
-              .length > 0 && (
+            filteredTreatments.length >
+              0 && (
               <div className="table-responsive">
                 <table className="table table-hover align-middle">
                   <thead className="table-light">
                     <tr>
                       <th>
                         Historia clínica
+                      </th>
+
+                      <th>
+                        Fecha
+                      </th>
+
+                      <th>
+                        Diagnóstico
                       </th>
 
                       <th>
@@ -525,15 +745,7 @@ export default function SuggestedTreatmentsPage() {
                       </th>
 
                       <th>
-                        Pieza
-                      </th>
-
-                      <th>
-                        Cantidad
-                      </th>
-
-                      <th>
-                        Notas
+                        Observaciones
                       </th>
 
                       <th>
@@ -550,14 +762,21 @@ export default function SuggestedTreatmentsPage() {
                     {filteredTreatments.map(
                       (treatment) => {
                         const procedure =
-                          findProcedure(
-                            treatment.procedure,
+                          getProcedure(
+                            treatment,
+                            procedures,
                           );
 
                         const specialist =
-                          findSpecialist(
-                            treatment.specialist,
+                          getSpecialist(
+                            treatment,
+                            specialists,
                           );
+
+                        const procedurePrice =
+                          procedure
+                            ?.base_price ??
+                          procedure?.price;
 
                         return (
                           <tr
@@ -567,10 +786,26 @@ export default function SuggestedTreatmentsPage() {
                           >
                             <td>
                               #
+                              {getRelationId(
+                                treatment
+                                  .medical_record,
+                              )}
+                            </td>
+
+                            <td>
                               {
                                 treatment
-                                  .medical_record
+                                  .diagnosis_date
                               }
+                            </td>
+
+                            <td>
+                              <strong>
+                                {
+                                  treatment
+                                    .diagnosis
+                                }
+                              </strong>
                             </td>
 
                             <td>
@@ -578,24 +813,24 @@ export default function SuggestedTreatmentsPage() {
                                 <>
                                   <strong>
                                     {
-                                      procedure
-                                        .name
+                                      procedure.name
                                     }
                                   </strong>
 
-                                  <div>
-                                    <small className="text-muted">
-                                      S/{" "}
-                                      {
-                                        procedure
-                                          .price
-                                      }
-                                    </small>
-                                  </div>
+                                  {procedurePrice && (
+                                    <div>
+                                      <small className="text-muted">
+                                        S/{" "}
+                                        {
+                                          procedurePrice
+                                        }
+                                      </small>
+                                    </div>
+                                  )}
                                 </>
                               ) : (
                                 <span className="text-muted">
-                                  Procedimiento no encontrado
+                                  Sin procedimiento
                                 </span>
                               )}
                             </td>
@@ -634,21 +869,8 @@ export default function SuggestedTreatmentsPage() {
 
                             <td>
                               {treatment
-                                .tooth_code ||
-                                "General"}
-                            </td>
-
-                            <td>
-                              {
-                                treatment
-                                  .quantity
-                              }
-                            </td>
-
-                            <td>
-                              {treatment.notes
-                                ? treatment.notes
-                                : "Sin notas"}
+                                .clinical_observations ||
+                                "Sin observaciones"}
                             </td>
 
                             <td>
@@ -689,6 +911,38 @@ export default function SuggestedTreatmentsPage() {
               </div>
             )}
         </div>
+
+        {appointmentId &&
+          medicalRecordId && (
+            <div className="card-footer bg-white d-flex justify-content-end">
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={
+                  finishAttention
+                }
+                disabled={
+                  treatmentsToDisplay
+                    .length === 0 ||
+                  createMutation
+                    .isPending ||
+                  updateMutation
+                    .isPending ||
+                  isFinishing
+                }
+                title={
+                  treatmentsToDisplay
+                    .length === 0
+                    ? "Primero registre al menos un tratamiento sugerido."
+                    : undefined
+                }
+              >
+                {isFinishing
+                  ? "Finalizando..."
+                  : "Finalizar atención"}
+              </button>
+            </div>
+          )}
       </div>
 
       {showModal &&
@@ -715,14 +969,11 @@ export default function SuggestedTreatmentsPage() {
             }
             onClose={() => {
               setShowModal(false);
-
               setSelectedTreatment(
                 null,
               );
             }}
-            onSave={
-              saveTreatment
-            }
+            onSave={saveTreatment}
           />
         )}
     </div>

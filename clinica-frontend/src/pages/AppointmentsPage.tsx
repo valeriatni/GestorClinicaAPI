@@ -12,9 +12,8 @@ import {
 import AppointmentModal from "../components/appointments/AppointmentModal";
 
 import {
+  attendAppointment,
   cancelAppointment,
-  confirmAppointment,
-  markAppointmentArrived,
   markAppointmentNoShow,
 } from "../api/appointmentApi";
 
@@ -36,8 +35,7 @@ import type {
 function getToday(): string {
   const today = new Date();
 
-  const year =
-    today.getFullYear();
+  const year = today.getFullYear();
 
   const month = String(
     today.getMonth() + 1,
@@ -56,10 +54,10 @@ function getAppointmentDateTime(
 ): Date {
   return new Date(
     `${appointment.appointment_date}` +
-    `T${appointment.appointment_time.slice(
-      0,
-      5,
-    )}:00`,
+      `T${appointment.appointment_time.slice(
+        0,
+        5,
+      )}:00`,
   );
 }
 
@@ -70,8 +68,7 @@ function hasAppointmentTimePassed(
   return (
     getAppointmentDateTime(
       appointment,
-    ).getTime() <=
-    new Date().getTime()
+    ).getTime() <= new Date().getTime()
   );
 }
 
@@ -79,20 +76,15 @@ function hasAppointmentTimePassed(
 function getStatusText(
   status: AppointmentStatus,
 ): string {
-  const statusTexts:
-    Record<
-      AppointmentStatus,
-      string
-    > = {
-      Pending: "Pendiente",
-      Confirmed: "Confirmada",
-      Waiting: "En espera",
-      "In Consultation":
-        "En consulta",
-      Attended: "Atendida",
-      Cancelled: "Cancelada",
-      "No Show": "No asistió",
-    };
+  const statusTexts: Record<
+    AppointmentStatus,
+    string
+  > = {
+    Pending: "Pendiente",
+    Attended: "Atendida",
+    Cancelled: "Cancelada",
+    "No Show": "No asistió",
+  };
 
   return statusTexts[status];
 }
@@ -101,26 +93,15 @@ function getStatusText(
 function getStatusClass(
   status: AppointmentStatus,
 ): string {
-  const statusClasses:
-    Record<
-      AppointmentStatus,
-      string
-    > = {
-      Pending:
-        "text-bg-warning",
-      Confirmed:
-        "text-bg-primary",
-      Waiting:
-        "text-bg-info",
-      "In Consultation":
-        "text-bg-secondary",
-      Attended:
-        "text-bg-success",
-      Cancelled:
-        "text-bg-danger",
-      "No Show":
-        "text-bg-dark",
-    };
+  const statusClasses: Record<
+    AppointmentStatus,
+    string
+  > = {
+    Pending: "text-bg-warning",
+    Attended: "text-bg-success",
+    Cancelled: "text-bg-danger",
+    "No Show": "text-bg-dark",
+  };
 
   return statusClasses[status];
 }
@@ -134,8 +115,10 @@ export default function AppointmentsPage() {
   } = useAuth();
 
   const isReceptionist =
-    user?.role ===
-    "Recepcionista";
+    user?.role === "Recepcionista";
+
+  const isSpecialist =
+    user?.role === "Especialista";
 
   const [
     searchParams,
@@ -166,16 +149,12 @@ export default function AppointmentsPage() {
   const [
     selectedAppointment,
     setSelectedAppointment,
-  ] = useState<
-    Appointment | null
-  >(null);
+  ] = useState<Appointment | null>(null);
 
   const [
     initialPatientId,
     setInitialPatientId,
-  ] = useState<
-    number | null
-  >(null);
+  ] = useState<number | null>(null);
 
   const [
     successMessage,
@@ -190,9 +169,7 @@ export default function AppointmentsPage() {
   const [
     actionAppointmentId,
     setActionAppointmentId,
-  ] = useState<
-    number | null
-  >(null);
+  ] = useState<number | null>(null);
 
   const {
     appointments,
@@ -238,20 +215,16 @@ export default function AppointmentsPage() {
       return;
     }
 
-    const patient =
-      patients.find(
-        (currentPatient) =>
-          currentPatient.id ===
-          patientId,
-      );
+    const patient = patients.find(
+      (currentPatient) =>
+        currentPatient.id === patientId,
+    );
 
     if (!patient) {
       setErrorMessage(
         "No se encontró el paciente seleccionado.",
       );
-    } else if (
-      !patient.is_active
-    ) {
+    } else if (!patient.is_active) {
       setErrorMessage(
         "El paciente está inactivo y no puede recibir nuevas citas.",
       );
@@ -282,8 +255,7 @@ export default function AppointmentsPage() {
 
 
   function handleSearch(
-    event:
-      FormEvent<HTMLFormElement>,
+    event: FormEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
@@ -318,14 +290,8 @@ export default function AppointmentsPage() {
       return;
     }
 
-    setSelectedAppointment(
-      null,
-    );
-
-    setInitialPatientId(
-      null,
-    );
-
+    setSelectedAppointment(null);
+    setInitialPatientId(null);
     setShowModal(true);
   }
 
@@ -344,15 +310,11 @@ export default function AppointmentsPage() {
     }
 
     if (
-      appointment
-        .appointment_status !==
-        "Pending" &&
-      appointment
-        .appointment_status !==
-        "Confirmed"
+      appointment.appointment_status !==
+      "Pending"
     ) {
       setErrorMessage(
-        "Solo una cita pendiente o confirmada puede editarse.",
+        "Solo una cita pendiente puede editarse.",
       );
 
       return;
@@ -374,17 +336,13 @@ export default function AppointmentsPage() {
       appointment,
     );
 
-    setInitialPatientId(
-      null,
-    );
-
+    setInitialPatientId(null);
     setShowModal(true);
   }
 
 
   async function saveAppointment(
-    appointmentData:
-      AppointmentPayload,
+    appointmentData: AppointmentPayload,
   ) {
     clearMessages();
 
@@ -395,23 +353,18 @@ export default function AppointmentsPage() {
     }
 
     if (selectedAppointment) {
-      await updateMutation
-        .mutateAsync({
-          id:
-            selectedAppointment.id,
-
-          appointment:
-            appointmentData,
-        });
+      await updateMutation.mutateAsync({
+        id: selectedAppointment.id,
+        appointment: appointmentData,
+      });
 
       setSuccessMessage(
         "La cita se actualizó correctamente.",
       );
     } else {
-      await createMutation
-        .mutateAsync(
-          appointmentData,
-        );
+      await createMutation.mutateAsync(
+        appointmentData,
+      );
 
       setSuccessMessage(
         "La cita se registró como pendiente.",
@@ -419,26 +372,18 @@ export default function AppointmentsPage() {
     }
 
     setSelectedDate(
-      appointmentData
-        .appointment_date,
+      appointmentData.appointment_date,
     );
 
     setShowModal(false);
-
-    setSelectedAppointment(
-      null,
-    );
-
-    setInitialPatientId(
-      null,
-    );
+    setSelectedAppointment(null);
+    setInitialPatientId(null);
   }
 
 
   async function executeAction(
     appointmentId: number,
-    action:
-      () => Promise<Appointment>,
+    action: () => Promise<Appointment>,
     successText: string,
   ) {
     clearMessages();
@@ -449,7 +394,6 @@ export default function AppointmentsPage() {
 
     try {
       await action();
-
       await refetchAppointments();
 
       setSuccessMessage(
@@ -462,51 +406,8 @@ export default function AppointmentsPage() {
           : "No se pudo completar la operación.",
       );
     } finally {
-      setActionAppointmentId(
-        null,
-      );
+      setActionAppointmentId(null);
     }
-  }
-
-
-  async function handleConfirm(
-    appointment: Appointment,
-  ) {
-    await executeAction(
-      appointment.id,
-
-      () =>
-        confirmAppointment(
-          appointment.id,
-        ),
-
-      "La cita fue confirmada.",
-    );
-  }
-
-
-  async function handleArrive(
-    appointment: Appointment,
-  ) {
-    const confirmed =
-      window.confirm(
-        "¿Confirma que el paciente llegó a la clínica?",
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    await executeAction(
-      appointment.id,
-
-      () =>
-        markAppointmentArrived(
-          appointment.id,
-        ),
-
-      "El paciente fue marcado en espera.",
-    );
   }
 
 
@@ -525,10 +426,9 @@ export default function AppointmentsPage() {
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        "¿Confirma que el paciente no asistió a la cita?",
-      );
+    const confirmed = window.confirm(
+      "¿Confirma que el paciente no asistió a la cita?",
+    );
 
     if (!confirmed) {
       return;
@@ -536,12 +436,10 @@ export default function AppointmentsPage() {
 
     await executeAction(
       appointment.id,
-
       () =>
         markAppointmentNoShow(
           appointment.id,
         ),
-
       "La cita fue marcada como no asistida.",
     );
   }
@@ -550,21 +448,17 @@ export default function AppointmentsPage() {
   async function handleCancel(
     appointment: Appointment,
   ) {
-    const reason =
-      window.prompt(
-        "Ingrese el motivo de cancelación:",
-      );
+    const reason = window.prompt(
+      "Ingrese el motivo de cancelación:",
+    );
 
     if (reason === null) {
       return;
     }
 
-    const cleanReason =
-      reason.trim();
+    const cleanReason = reason.trim();
 
-    if (
-      cleanReason.length < 5
-    ) {
+    if (cleanReason.length < 5) {
       setErrorMessage(
         "El motivo de cancelación debe tener al menos 5 caracteres.",
       );
@@ -574,14 +468,73 @@ export default function AppointmentsPage() {
 
     await executeAction(
       appointment.id,
-
       () =>
         cancelAppointment(
           appointment.id,
           cleanReason,
         ),
-
       "La cita fue cancelada correctamente.",
+    );
+  }
+
+
+  async function handleAttend(
+    appointment: Appointment,
+  ) {
+    clearMessages();
+
+    setActionAppointmentId(
+      appointment.id,
+    );
+
+    try {
+      // Marca la cita como atendida sin validar
+      // la fecha ni la hora programada.
+      await attendAppointment(
+        appointment.id,
+      );
+
+      await refetchAppointments();
+
+      navigate(
+        `/medical-records?patient=${appointment.patient}` +
+          `&appointment=${appointment.id}`,
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo marcar la cita como atendida.",
+      );
+    } finally {
+      setActionAppointmentId(
+        null,
+      );
+    }
+  }
+
+
+  function openMedicalRecord(
+    appointment: Appointment,
+  ) {
+    clearMessages();
+
+    if (
+      appointment.appointment_status ===
+        "Cancelled" ||
+      appointment.appointment_status ===
+        "No Show"
+    ) {
+      setErrorMessage(
+        "No se puede abrir la atención de una cita cancelada o no asistida.",
+      );
+
+      return;
+    }
+
+    navigate(
+      `/medical-records?patient=${appointment.patient}` +
+        `&appointment=${appointment.id}`,
     );
   }
 
@@ -592,21 +545,8 @@ export default function AppointmentsPage() {
     clearMessages();
 
     if (
-      appointment
-        .appointment_status ===
-        "Pending"
-    ) {
-      setErrorMessage(
-        "Primero debe confirmar la cita antes de registrar un pago.",
-      );
-
-      return;
-    }
-
-    if (
-      appointment
-        .appointment_status ===
-        "Cancelled"
+      appointment.appointment_status ===
+      "Cancelled"
     ) {
       setErrorMessage(
         "No se puede registrar un pago para una cita cancelada.",
@@ -616,9 +556,8 @@ export default function AppointmentsPage() {
     }
 
     if (
-      appointment
-        .appointment_status ===
-        "No Show"
+      appointment.appointment_status ===
+      "No Show"
     ) {
       setErrorMessage(
         "No se puede registrar un pago para una cita a la que el paciente no asistió.",
@@ -629,7 +568,7 @@ export default function AppointmentsPage() {
 
     navigate(
       `/payments?patient=${appointment.patient}` +
-      `&appointment=${appointment.id}`,
+        `&appointment=${appointment.id}`,
     );
   }
 
@@ -649,64 +588,82 @@ export default function AppointmentsPage() {
   ) {
     return specialists.find(
       (specialist) =>
-        specialist.id ===
-        specialistId,
+        specialist.id === specialistId,
     );
   }
 
 
   const filteredAppointments =
     appointments
-      .filter(
-        (appointment) =>
-          appointment
-            .appointment_date ===
-          selectedDate,
-      )
-      .filter(
-        (appointment) => {
-          if (!search) {
-            return true;
-          }
+      .filter((appointment) => {
+        if (isSpecialist) {
+          // El especialista ve las citas de hoy
+          // y todas las citas futuras.
+          return (
+            appointment.appointment_date >=
+            getToday()
+          );
+        }
 
-          const patient =
-            findPatient(
-              appointment.patient,
-            );
+        // Recepción y gerencia mantienen
+        // el filtro de la fecha seleccionada.
+        return (
+          appointment.appointment_date ===
+          selectedDate
+        );
+      })
+      .filter((appointment) => {
+        if (!search) {
+          return true;
+        }
 
-          const specialist =
-            findSpecialist(
-              appointment.specialist,
-            );
+        const patient = findPatient(
+          appointment.patient,
+        );
 
-          const searchableText = `
-            ${patient?.first_name ?? ""}
-            ${patient?.last_name ?? ""}
-            ${patient?.dni ?? ""}
-            ${specialist?.first_name ?? ""}
-            ${specialist?.last_name ?? ""}
-            ${appointment.reason}
-            ${getStatusText(
-              appointment
-                .appointment_status,
-            )}
-          `.toLowerCase();
+        const specialist = findSpecialist(
+          appointment.specialist,
+        );
 
-          return searchableText
-            .includes(search);
-        },
-      )
+        const searchableText = `
+          ${patient?.first_name ?? ""}
+          ${patient?.last_name ?? ""}
+          ${patient?.dni ?? ""}
+          ${specialist?.first_name ?? ""}
+          ${specialist?.last_name ?? ""}
+          ${appointment.reason}
+          ${getStatusText(
+            appointment.appointment_status,
+          )}
+        `.toLowerCase();
+
+        return searchableText.includes(
+          search,
+        );
+      })
       .sort(
         (
           firstAppointment,
           secondAppointment,
-        ) =>
-          firstAppointment
+        ) => {
+          const dateComparison =
+            firstAppointment.appointment_date
+              .localeCompare(
+                secondAppointment
+                  .appointment_date,
+              );
+
+          if (dateComparison !== 0) {
+            return dateComparison;
+          }
+
+          return firstAppointment
             .appointment_time
             .localeCompare(
               secondAppointment
                 .appointment_time,
-            ),
+            );
+        },
       );
 
 
@@ -719,7 +676,7 @@ export default function AppointmentsPage() {
           <p className="text-muted mb-0">
             {isReceptionist
               ? "Registre y controle las citas de los pacientes."
-              : "Consulte las citas programadas de la clínica."}
+              : "Consulte y atienda sus citas programadas."}
           </p>
         </div>
 
@@ -727,9 +684,7 @@ export default function AppointmentsPage() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={
-              openCreateModal
-            }
+            onClick={openCreateModal}
           >
             Nueva cita
           </button>
@@ -770,22 +725,24 @@ export default function AppointmentsPage() {
             className="row g-3 align-items-end"
             onSubmit={handleSearch}
           >
-            <div className="col-md-3">
-              <label className="form-label">
-                Fecha
-              </label>
+            {!isSpecialist && (
+              <div className="col-md-3">
+                <label className="form-label">
+                  Fecha
+                </label>
 
-              <input
-                type="date"
-                className="form-control"
-                value={selectedDate}
-                onChange={(event) =>
-                  setSelectedDate(
-                    event.target.value,
-                  )
-                }
-              />
-            </div>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={selectedDate}
+                  onChange={(event) =>
+                    setSelectedDate(
+                      event.target.value,
+                    )
+                  }
+                />
+              </div>
+            )}
 
             <div className="col-md-5">
               <label className="form-label">
@@ -830,7 +787,9 @@ export default function AppointmentsPage() {
       <div className="card">
         <div className="card-header bg-white">
           <h5 className="mb-0">
-            Citas del {selectedDate}
+            {isSpecialist
+              ? "Citas de hoy y próximas citas"
+              : `Citas del ${selectedDate}`}
           </h5>
         </div>
 
@@ -867,21 +826,26 @@ export default function AppointmentsPage() {
 
           {!isLoading &&
             !isError &&
-            filteredAppointments
-              .length === 0 && (
+            filteredAppointments.length ===
+              0 && (
               <div className="alert alert-info">
-                No existen citas para la fecha seleccionada.
+                {isSpecialist
+                  ? "No tiene citas pendientes para hoy ni fechas futuras."
+                  : "No existen citas para la fecha seleccionada."}
               </div>
             )}
 
           {!isLoading &&
             !isError &&
-            filteredAppointments
-              .length > 0 && (
+            filteredAppointments.length >
+              0 && (
               <div className="table-responsive">
                 <table className="table table-hover align-middle">
                   <thead className="table-light">
                     <tr>
+                      {isSpecialist && (
+                        <th>Fecha</th>
+                      )}
                       <th>Hora</th>
                       <th>Paciente</th>
                       <th>Especialista</th>
@@ -904,30 +868,26 @@ export default function AppointmentsPage() {
                             appointment.specialist,
                           );
 
-                        const actionPending =
+                        const actionIsPending =
                           actionAppointmentId ===
                           appointment.id;
 
-                        const canMarkNoShow =
-                          (
-                            appointment
-                              .appointment_status ===
-                              "Pending" ||
-                            appointment
-                              .appointment_status ===
-                              "Confirmed"
-                          ) &&
-                          hasAppointmentTimePassed(
-                            appointment,
-                          );
-
                         return (
                           <tr key={appointment.id}>
+                            {isSpecialist && (
+                              <td>
+                                <strong>
+                                  {appointment.appointment_date}
+                                </strong>
+                              </td>
+                            )}
+
                             <td>
                               <strong>
-                                {appointment
-                                  .appointment_time
-                                  .slice(0, 5)}
+                                {appointment.appointment_time.slice(
+                                  0,
+                                  5,
+                                )}
                               </strong>
                             </td>
 
@@ -944,6 +904,12 @@ export default function AppointmentsPage() {
                                       DNI: {patient.dni}
                                     </small>
                                   </div>
+
+                                  {!patient.is_active && (
+                                    <span className="badge text-bg-secondary mt-1">
+                                      Paciente inactivo
+                                    </span>
+                                  )}
                                 </>
                               ) : (
                                 <span className="text-danger">
@@ -954,11 +920,21 @@ export default function AppointmentsPage() {
 
                             <td>
                               {specialist ? (
-                                <strong>
-                                  Dr(a).{" "}
-                                  {specialist.first_name}{" "}
-                                  {specialist.last_name}
-                                </strong>
+                                <>
+                                  <strong>
+                                    Dr(a).{" "}
+                                    {specialist.first_name}{" "}
+                                    {specialist.last_name}
+                                  </strong>
+
+                                  {!specialist.is_active && (
+                                    <div>
+                                      <small className="text-danger">
+                                        Especialista inactivo
+                                      </small>
+                                    </div>
+                                  )}
+                                </>
                               ) : (
                                 <span className="text-danger">
                                   Especialista no encontrado
@@ -972,76 +948,59 @@ export default function AppointmentsPage() {
 
                             <td>
                               <span
-                                className={
-                                  `badge ${getStatusClass(
-                                    appointment
-                                      .appointment_status,
-                                  )}`
-                                }
+                                className={`badge ${getStatusClass(
+                                  appointment.appointment_status,
+                                )}`}
                               >
                                 {getStatusText(
-                                  appointment
-                                    .appointment_status,
+                                  appointment.appointment_status,
                                 )}
                               </span>
                             </td>
 
                             <td>
-                              {!isReceptionist ? (
-                                <span className="text-muted">
-                                  Solo lectura
-                                </span>
-                              ) : (
-                                <div className="d-flex gap-2 flex-wrap">
-                                  {appointment
-                                    .appointment_status ===
+                              <div className="d-flex gap-2 flex-wrap">
+                                {isSpecialist &&
+                                  appointment.appointment_status ===
                                     "Pending" && (
                                     <button
                                       type="button"
-                                      className="btn btn-sm btn-outline-primary"
+                                      className="btn btn-sm btn-success"
                                       onClick={() =>
-                                        handleConfirm(
+                                        handleAttend(
                                           appointment,
                                         )
                                       }
                                       disabled={
-                                        actionPending
+                                        actionIsPending
                                       }
                                     >
-                                      Confirmar
+                                      {actionIsPending
+                                        ? "Atendiendo..."
+                                        : "Atender"}
                                     </button>
                                   )}
 
-                                  {appointment
-                                    .appointment_status ===
-                                    "Confirmed" && (
+                                {isSpecialist &&
+                                  appointment.appointment_status ===
+                                    "Attended" && (
                                     <button
                                       type="button"
-                                      className="btn btn-sm btn-outline-info"
+                                      className="btn btn-sm btn-outline-success"
                                       onClick={() =>
-                                        handleArrive(
+                                        openMedicalRecord(
                                           appointment,
                                         )
                                       }
-                                      disabled={
-                                        actionPending
-                                      }
                                     >
-                                      Llegó
+                                      Historia clínica
                                     </button>
                                   )}
 
-                                  {(appointment
-                                    .appointment_status ===
-                                    "Confirmed" ||
-                                    appointment
-                                      .appointment_status ===
-                                      "Waiting" ||
-                                    appointment
-                                      .appointment_status ===
-                                      "In Consultation" ||
-                                    appointment
-                                      .appointment_status ===
+                                {isReceptionist &&
+                                  (appointment.appointment_status ===
+                                    "Pending" ||
+                                    appointment.appointment_status ===
                                       "Attended") && (
                                     <button
                                       type="button"
@@ -1056,15 +1015,9 @@ export default function AppointmentsPage() {
                                     </button>
                                   )}
 
-                                  {(appointment
-                                    .appointment_status ===
-                                    "Pending" ||
-                                    appointment
-                                      .appointment_status ===
-                                      "Confirmed") &&
-                                    !hasAppointmentTimePassed(
-                                      appointment,
-                                    ) && (
+                                {isReceptionist &&
+                                  appointment.appointment_status ===
+                                    "Pending" && (
                                     <button
                                       type="button"
                                       className="btn btn-sm btn-outline-secondary"
@@ -1078,7 +1031,9 @@ export default function AppointmentsPage() {
                                     </button>
                                   )}
 
-                                  {canMarkNoShow && (
+                                {isReceptionist &&
+                                  appointment.appointment_status ===
+                                    "Pending" && (
                                     <button
                                       type="button"
                                       className="btn btn-sm btn-outline-dark"
@@ -1087,20 +1042,15 @@ export default function AppointmentsPage() {
                                           appointment,
                                         )
                                       }
-                                      disabled={
-                                        actionPending
-                                      }
+                                      disabled={actionIsPending}
                                     >
                                       No asistió
                                     </button>
                                   )}
 
-                                  {(appointment
-                                    .appointment_status ===
-                                    "Pending" ||
-                                    appointment
-                                      .appointment_status ===
-                                      "Confirmed") && (
+                                {isReceptionist &&
+                                  appointment.appointment_status ===
+                                    "Pending" && (
                                     <button
                                       type="button"
                                       className="btn btn-sm btn-outline-danger"
@@ -1109,15 +1059,12 @@ export default function AppointmentsPage() {
                                           appointment,
                                         )
                                       }
-                                      disabled={
-                                        actionPending
-                                      }
+                                      disabled={actionIsPending}
                                     >
                                       Cancelar
                                     </button>
                                   )}
-                                </div>
-                              )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1130,38 +1077,25 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      {showModal &&
-        isReceptionist && (
-          <AppointmentModal
-            appointment={
-              selectedAppointment
-            }
-            initialPatientId={
-              initialPatientId
-            }
-            patients={patients}
-            specialists={specialists}
-            appointments={appointments}
-            isSaving={
-              createMutation.isPending ||
-              updateMutation.isPending
-            }
-            onClose={() => {
-              setShowModal(false);
-
-              setSelectedAppointment(
-                null,
-              );
-
-              setInitialPatientId(
-                null,
-              );
-            }}
-            onSave={
-              saveAppointment
-            }
-          />
-        )}
+      {showModal && (
+        <AppointmentModal
+          appointment={selectedAppointment}
+          initialPatientId={initialPatientId}
+          patients={patients}
+          specialists={specialists}
+          appointments={appointments}
+          isSaving={
+            createMutation.isPending ||
+            updateMutation.isPending
+          }
+          onClose={() => {
+            setShowModal(false);
+            setSelectedAppointment(null);
+            setInitialPatientId(null);
+          }}
+          onSave={saveAppointment}
+        />
+      )}
     </div>
   );
 }

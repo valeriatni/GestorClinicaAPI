@@ -222,15 +222,12 @@ class AppointmentViewSet(
 
         appointment = self.get_object()
 
-        if appointment.appointment_status not in [
-            'Pending',
-            'Confirmed',
-        ]:
+        if appointment.appointment_status != 'Pending':
             return Response(
                 {
                     'detail': (
                         'Solo una cita pendiente '
-                        'o confirmada puede editarse.'
+                        'puede editarse.'
                     )
                 },
                 status=(
@@ -268,15 +265,12 @@ class AppointmentViewSet(
 
         appointment = self.get_object()
 
-        if appointment.appointment_status not in [
-            'Pending',
-            'Confirmed',
-        ]:
+        if appointment.appointment_status != 'Pending':
             return Response(
                 {
                     'detail': (
                         'Solo una cita pendiente '
-                        'o confirmada puede editarse.'
+                        'puede editarse.'
                     )
                 },
                 status=(
@@ -605,146 +599,15 @@ class AppointmentViewSet(
         detail=True,
         methods=['patch']
     )
-    def confirm(
+    def attend(
         self,
         request,
         pk=None
     ):
-
-        if get_user_role(
-            request.user
-        ) != 'Recepcionista':
-            return Response(
-                {
-                    'detail': (
-                        'Solo recepción puede '
-                        'confirmar citas.'
-                    )
-                },
-                status=(
-                    status.HTTP_403_FORBIDDEN
-                )
-            )
-
-        appointment = self.get_object()
-
-        if appointment.appointment_status != (
-            'Pending'
-        ):
-            return Response(
-                {
-                    'detail': (
-                        'Solo una cita pendiente '
-                        'puede confirmarse.'
-                    )
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                )
-            )
-
-        appointment.appointment_status = (
-            'Confirmed'
-        )
-        appointment.is_active = True
-
-        appointment.save(
-            update_fields=[
-                'appointment_status',
-                'is_active',
-                'updated_at',
-            ]
-        )
-
-        return self._detail_response(
-            appointment
-        )
-
-    @action(
-        detail=True,
-        methods=['patch']
-    )
-    def arrive(
-        self,
-        request,
-        pk=None
-    ):
-
-        if get_user_role(
-            request.user
-        ) != 'Recepcionista':
-            return Response(
-                {
-                    'detail': (
-                        'Solo recepción puede '
-                        'marcar la llegada.'
-                    )
-                },
-                status=(
-                    status.HTTP_403_FORBIDDEN
-                )
-            )
-
-        appointment = self.get_object()
-
-        if appointment.appointment_status != (
-            'Confirmed'
-        ):
-            return Response(
-                {
-                    'detail': (
-                        'Solo una cita confirmada '
-                        'puede marcarse en espera.'
-                    )
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                )
-            )
-
-        if (
-            appointment.appointment_date
-            > timezone.localdate()
-        ):
-            return Response(
-                {
-                    'detail': (
-                        'No puede marcar la llegada '
-                        'para una cita futura.'
-                    )
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                )
-            )
-
-        appointment.appointment_status = (
-            'Waiting'
-        )
-        appointment.is_active = True
-
-        appointment.save(
-            update_fields=[
-                'appointment_status',
-                'is_active',
-                'updated_at',
-            ]
-        )
-
-        return self._detail_response(
-            appointment
-        )
-
-    @action(
-        detail=True,
-        methods=['patch'],
-        url_path='start-consultation'
-    )
-    def start_consultation(
-        self,
-        request,
-        pk=None
-    ):
+        """
+        Permite al especialista atender cualquiera de sus citas
+        pendientes, sin restringir la fecha ni la hora.
+        """
 
         if get_user_role(
             request.user
@@ -753,7 +616,7 @@ class AppointmentViewSet(
                 {
                     'detail': (
                         'Solo el especialista puede '
-                        'iniciar la consulta.'
+                        'atender citas.'
                     )
                 },
                 status=(
@@ -796,99 +659,14 @@ class AppointmentViewSet(
                 )
             )
 
-        if appointment.appointment_status not in [
-            'Pending',
-            'Confirmed',
-            'Waiting',
-        ]:
-            return Response(
-                {
-                    'detail': (
-                        'Solo una cita pendiente, confirmada '
-                        'o en espera puede iniciar consulta.'
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        appointment_datetime = (
-            timezone.make_aware(
-                datetime.combine(
-                    appointment.appointment_date,
-                    appointment.appointment_time,
-                ),
-                timezone.get_current_timezone(),
-            )
-        )
-
-        if appointment_datetime > (
-            timezone.localtime()
-        ):
-            return Response(
-                {
-                    'detail': (
-                        'Todavía no puede iniciar '
-                        'una cita futura.'
-                    )
-                },
-                status=(
-                    status.HTTP_400_BAD_REQUEST
-                )
-            )
-
-        appointment.appointment_status = (
-            'In Consultation'
-        )
-        appointment.is_active = True
-
-        appointment.save(
-            update_fields=[
-                'appointment_status',
-                'is_active',
-                'updated_at',
-            ]
-        )
-
-        return self._detail_response(
-            appointment
-        )
-
-    @action(
-        detail=True,
-        methods=['patch'],
-        url_path='finish-consultation'
-    )
-    def finish_consultation(
-        self,
-        request,
-        pk=None
-    ):
-
-        if get_user_role(
-            request.user
-        ) != 'Especialista':
-            return Response(
-                {
-                    'detail': (
-                        'Solo el especialista puede '
-                        'finalizar la consulta.'
-                    )
-                },
-                status=(
-                    status.HTTP_403_FORBIDDEN
-                )
-            )
-
-        appointment = self.get_object()
-
         if appointment.appointment_status != (
-            'In Consultation'
+            'Pending'
         ):
             return Response(
                 {
                     'detail': (
-                        'Solo una cita en consulta '
-                        'puede finalizarse.'
+                        'Solo una cita pendiente '
+                        'puede marcarse como atendida.'
                     )
                 },
                 status=(
@@ -896,15 +674,22 @@ class AppointmentViewSet(
                 )
             )
 
+        # No se compara la fecha ni la hora.
+        # El especialista puede atender una cita de hoy
+        # o una cita futura cuando lo necesite.
         appointment.appointment_status = (
             'Attended'
         )
         appointment.is_active = False
+        appointment.cancelled_reason = None
+        appointment.cancelled_at = None
 
         appointment.save(
             update_fields=[
                 'appointment_status',
                 'is_active',
+                'cancelled_reason',
+                'cancelled_at',
                 'updated_at',
             ]
         )
@@ -941,16 +726,12 @@ class AppointmentViewSet(
 
         appointment = self.get_object()
 
-        if appointment.appointment_status not in [
-            'Pending',
-            'Confirmed',
-        ]:
+        if appointment.appointment_status != 'Pending':
             return Response(
                 {
                     'detail': (
-                        'Solo una cita pendiente '
-                        'o confirmada puede marcarse '
-                        'como no asistida.'
+                        'Solo una cita pendiente puede '
+                        'marcarse como no asistida.'
                     )
                 },
                 status=(
@@ -1032,15 +813,12 @@ class AppointmentViewSet(
 
         appointment = self.get_object()
 
-        if appointment.appointment_status not in [
-            'Pending',
-            'Confirmed',
-        ]:
+        if appointment.appointment_status != 'Pending':
             return Response(
                 {
                     'detail': (
                         'Solo una cita pendiente '
-                        'o confirmada puede cancelarse.'
+                        'puede cancelarse.'
                     )
                 },
                 status=(
@@ -1096,10 +874,7 @@ class AppointmentViewSet(
         instance
     ):
 
-        if instance.appointment_status in [
-            'Attended',
-            'In Consultation',
-        ]:
+        if instance.appointment_status == 'Attended':
             raise ValidationError(
                 'No puede eliminar una cita que '
                 'forma parte de una atención clínica.'
@@ -1217,9 +992,6 @@ class AppointmentViewSet(
 
         active_statuses = [
             'Pending',
-            'Confirmed',
-            'Waiting',
-            'In Consultation',
         ]
 
         should_be_active = (

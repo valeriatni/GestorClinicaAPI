@@ -11,124 +11,79 @@ import {
   useAuth,
 } from "../context/authContext";
 
+import type {
+  Appointment,
+  AppointmentStatus,
+} from "../types/appointment";
+
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL;
 
 
-interface PersonData {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-}
-
-
-interface Appointment {
-  id: number;
-
-  patient:
-    | number
-    | PersonData;
-
-  patient_name?: string;
-  patient_full_name?: string;
-
-  appointment_date: string;
-  appointment_time: string;
-  reason: string;
-  appointment_status: string;
-}
-
-
-function getPatientId(
-  appointment: Appointment,
-): number {
-  if (
-    typeof appointment.patient ===
-    "number"
-  ) {
-    return appointment.patient;
-  }
-
-  return appointment.patient.id;
-}
-
-
-function getPatientName(
-  appointment: Appointment,
-): string {
-  if (appointment.patient_name) {
-    return appointment.patient_name;
-  }
-
-  if (
-    appointment.patient_full_name
-  ) {
-    return (
-      appointment.patient_full_name
-    );
-  }
-
-  if (
-    typeof appointment.patient ===
-    "object"
-  ) {
-    const fullName = `
-      ${appointment.patient.first_name ?? ""}
-      ${appointment.patient.last_name ?? ""}
-    `.trim();
-
-    if (fullName) {
-      return fullName;
-    }
-  }
-
-  return (
-    appointment.patient_name ||
-    `Paciente #${getPatientId(
-      appointment,
-    )}`
-  );
-}
-
-
 function getStatusText(
-  status: string,
+  status: AppointmentStatus,
 ): string {
   const statusTexts:
-    Record<string, string> = {
+    Record<
+      AppointmentStatus,
+      string
+    > = {
       Pending: "Pendiente",
-      Confirmed: "Confirmada",
-      Waiting: "En espera",
-      "In Consultation": "En consulta",
       Attended: "Atendida",
       Cancelled: "Cancelada",
       "No Show": "No asistió",
     };
 
-  return statusTexts[status] ?? status;
+  return statusTexts[status];
 }
 
 
 function getStatusClass(
-  status: string,
+  status: AppointmentStatus,
 ): string {
   const statusClasses:
-    Record<string, string> = {
+    Record<
+      AppointmentStatus,
+      string
+    > = {
       Pending: "text-bg-warning",
-      Confirmed: "text-bg-primary",
-      Waiting: "text-bg-info",
-      "In Consultation":
-        "text-bg-secondary",
       Attended: "text-bg-success",
       Cancelled: "text-bg-danger",
       "No Show": "text-bg-dark",
     };
 
-  return (
-    statusClasses[status] ??
-    "text-bg-secondary"
-  );
+  return statusClasses[status];
+}
+
+
+async function getResponseError(
+  response: Response,
+): Promise<string> {
+  const data = await response
+    .json()
+    .catch(() => null);
+
+  if (
+    data &&
+    typeof data === "object"
+  ) {
+    if (
+      "detail" in data &&
+      typeof data.detail === "string"
+    ) {
+      return data.detail;
+    }
+
+    if (
+      "error" in data &&
+      typeof data.error === "string"
+    ) {
+      return data.error;
+    }
+  }
+
+  return "No se pudo completar la operación.";
 }
 
 
@@ -155,11 +110,6 @@ export default function MyAppointmentsPage() {
   ] = useState("");
 
   const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState("");
-
-  const [
     actionAppointmentId,
     setActionAppointmentId,
   ] = useState<number | null>(
@@ -180,7 +130,6 @@ export default function MyAppointmentsPage() {
         );
 
         setIsLoading(false);
-
         return;
       }
 
@@ -188,6 +137,8 @@ export default function MyAppointmentsPage() {
         const response = await fetch(
           `${API_BASE_URL}/api/appointments/`,
           {
+            method: "GET",
+
             headers: {
               "Content-Type":
                 "application/json",
@@ -199,26 +150,57 @@ export default function MyAppointmentsPage() {
         );
 
         if (!response.ok) {
-          const data = await response
-            .json()
-            .catch(() => null);
-
           throw new Error(
-            data?.detail ??
-              "No se pudieron obtener las citas.",
+            await getResponseError(
+              response,
+            ),
           );
         }
 
-        const data =
-          await response.json();
+        const data:
+          | Appointment[]
+          | {
+              results:
+                Appointment[];
+            } =
+            await response.json();
 
         const appointmentList =
           Array.isArray(data)
             ? data
             : data.results ?? [];
 
+        const orderedAppointments =
+          [...appointmentList].sort(
+            (
+              firstAppointment,
+              secondAppointment,
+            ) => {
+              const dateComparison =
+                firstAppointment
+                  .appointment_date
+                  .localeCompare(
+                    secondAppointment
+                      .appointment_date,
+                  );
+
+              if (
+                dateComparison !== 0
+              ) {
+                return dateComparison;
+              }
+
+              return firstAppointment
+                .appointment_time
+                .localeCompare(
+                  secondAppointment
+                    .appointment_time,
+                );
+            },
+          );
+
         setAppointments(
-          appointmentList,
+          orderedAppointments,
         );
       } catch (error) {
         setError(
@@ -238,19 +220,15 @@ export default function MyAppointmentsPage() {
   function openMedicalRecord(
     appointment: Appointment,
   ) {
-    const patientId =
-      getPatientId(appointment);
-
     navigate(
-      `/medical-records?patient=${patientId}` +
+      `/medical-records?patient=${appointment.patient}` +
         `&appointment=${appointment.id}`,
     );
   }
 
 
-  async function executeAppointmentAction(
+  async function attendAppointment(
     appointment: Appointment,
-    action: string,
   ): Promise<Appointment> {
     const token =
       localStorage.getItem(
@@ -265,7 +243,7 @@ export default function MyAppointmentsPage() {
 
     const response = await fetch(
       `${API_BASE_URL}/api/appointments/` +
-        `${appointment.id}/${action}/`,
+        `${appointment.id}/attend/`,
       {
         method: "PATCH",
 
@@ -282,14 +260,10 @@ export default function MyAppointmentsPage() {
     );
 
     if (!response.ok) {
-      const data = await response
-        .json()
-        .catch(() => null);
-
       throw new Error(
-        data?.detail ??
-          data?.error ??
-          "No se pudo completar la operación.",
+        await getResponseError(
+          response,
+        ),
       );
     }
 
@@ -317,11 +291,10 @@ export default function MyAppointmentsPage() {
   }
 
 
-  async function startConsultation(
+  async function handleAttend(
     appointment: Appointment,
   ) {
     setError("");
-    setSuccessMessage("");
 
     setActionAppointmentId(
       appointment.id,
@@ -329,9 +302,8 @@ export default function MyAppointmentsPage() {
 
     try {
       const updatedAppointment =
-        await executeAppointmentAction(
+        await attendAppointment(
           appointment,
-          "start-consultation",
         );
 
       updateAppointmentInList(
@@ -345,54 +317,7 @@ export default function MyAppointmentsPage() {
       setError(
         error instanceof Error
           ? error.message
-          : "No se pudo iniciar la consulta.",
-      );
-    } finally {
-      setActionAppointmentId(
-        null,
-      );
-    }
-  }
-
-
-  async function finishConsultation(
-    appointment: Appointment,
-  ) {
-    setError("");
-    setSuccessMessage("");
-
-    const confirmed =
-      window.confirm(
-        "¿Confirma que terminó la atención del paciente?",
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setActionAppointmentId(
-      appointment.id,
-    );
-
-    try {
-      const updatedAppointment =
-        await executeAppointmentAction(
-          appointment,
-          "finish-consultation",
-        );
-
-      updateAppointmentInList(
-        updatedAppointment,
-      );
-
-      setSuccessMessage(
-        "La cita fue marcada como atendida.",
-      );
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "No se pudo finalizar la atención.",
+          : "No se pudo atender la cita.",
       );
     } finally {
       setActionAppointmentId(
@@ -431,23 +356,6 @@ export default function MyAppointmentsPage() {
             user?.full_name}
         </p>
       </div>
-
-      {successMessage && (
-        <div
-          className="alert alert-success alert-dismissible"
-          role="alert"
-        >
-          {successMessage}
-
-          <button
-            type="button"
-            className="btn-close"
-            onClick={() =>
-              setSuccessMessage("")
-            }
-          />
-        </div>
-      )}
 
       {error && (
         <div
@@ -502,11 +410,6 @@ export default function MyAppointmentsPage() {
                       actionAppointmentId ===
                       appointment.id;
 
-                    const canStart =
-                      status === "Pending" ||
-                      status === "Confirmed" ||
-                      status === "Waiting";
-
                     return (
                       <tr
                         key={
@@ -527,9 +430,10 @@ export default function MyAppointmentsPage() {
                         </td>
 
                         <td>
-                          {getPatientName(
-                            appointment,
-                          )}
+                          {
+                            appointment
+                              .patient_name
+                          }
                         </td>
 
                         <td>
@@ -553,12 +457,13 @@ export default function MyAppointmentsPage() {
 
                         <td className="text-end">
                           <div className="d-flex justify-content-end gap-2 flex-wrap">
-                            {canStart && (
+                            {status ===
+                              "Pending" && (
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
                                 onClick={() =>
-                                  startConsultation(
+                                  handleAttend(
                                     appointment,
                                   )
                                 }
@@ -567,46 +472,9 @@ export default function MyAppointmentsPage() {
                                 }
                               >
                                 {isChanging
-                                  ? "Iniciando..."
+                                  ? "Atendiendo..."
                                   : "Atender"}
                               </button>
-                            )}
-
-                            {status ===
-                              "In Consultation" && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline-primary btn-sm"
-                                  onClick={() =>
-                                    openMedicalRecord(
-                                      appointment,
-                                    )
-                                  }
-                                  disabled={
-                                    isChanging
-                                  }
-                                >
-                                  Continuar atención
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="btn btn-success btn-sm"
-                                  onClick={() =>
-                                    finishConsultation(
-                                      appointment,
-                                    )
-                                  }
-                                  disabled={
-                                    isChanging
-                                  }
-                                >
-                                  {isChanging
-                                    ? "Finalizando..."
-                                    : "Finalizar atención"}
-                                </button>
-                              </>
                             )}
 
                             {status ===

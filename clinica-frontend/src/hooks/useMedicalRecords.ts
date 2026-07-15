@@ -6,85 +6,124 @@ import {
 
 import {
   createMedicalRecord,
+  getMedicalRecordPatients,
   getMedicalRecords,
+  reactivateMedicalRecord,
   updateMedicalRecord,
 } from "../api/medicalRecordApi";
-
-import { getPatients } from "../api/patientApi";
 
 import type {
   MedicalRecordPayload,
 } from "../types/medicalRecord";
 
+
 export function useMedicalRecords() {
-  const queryClient = useQueryClient();
+  const queryClient =
+    useQueryClient();
 
-  const medicalRecordsQuery = useQuery({
-    queryKey: ["medical-records"],
-    queryFn: getMedicalRecords,
-  });
+  const patientsQuery =
+    useQuery({
+      queryKey: [
+        "medical-record-patients",
+      ],
 
-  const patientsQuery = useQuery({
-    queryKey: ["patients", "medical-record-options"],
-    queryFn: () => getPatients("", false),
-  });
+      queryFn:
+        getMedicalRecordPatients,
+    });
 
-  const createMutation = useMutation({
-    mutationFn: createMedicalRecord,
+  const medicalRecordsQuery =
+    useQuery({
+      queryKey: [
+        "medical-records",
+      ],
 
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["medical-records"],
-      });
-    },
-  });
+      queryFn:
+        getMedicalRecords,
+    });
 
-  const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      medicalRecord,
-    }: {
-      id: number;
-      medicalRecord: MedicalRecordPayload;
-    }) =>
-      updateMedicalRecord(id, medicalRecord),
 
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["medical-records"],
-      });
-    },
-  });
+  const refreshMedicalRecords =
+    async () => {
+      await queryClient
+        .invalidateQueries({
+          queryKey: [
+            "medical-records",
+          ],
+        });
+    };
 
-  let queryError: Error | null = null;
 
-  if (medicalRecordsQuery.error instanceof Error) {
-    queryError = medicalRecordsQuery.error;
-  } else if (patientsQuery.error instanceof Error) {
-    queryError = patientsQuery.error;
-  }
+  const createMutation =
+    useMutation({
+      mutationFn:
+        createMedicalRecord,
+
+      onSuccess:
+        refreshMedicalRecords,
+    });
+
+
+  const updateMutation =
+    useMutation({
+      mutationFn: ({
+        id,
+        medicalRecord,
+      }: {
+        id: number;
+
+        medicalRecord:
+          MedicalRecordPayload;
+      }) =>
+        updateMedicalRecord(
+          id,
+          medicalRecord,
+        ),
+
+      onSuccess:
+        refreshMedicalRecords,
+    });
+
+
+  const reactivateMutation =
+    useMutation({
+      mutationFn:
+        reactivateMedicalRecord,
+
+      onSuccess:
+        refreshMedicalRecords,
+    });
+
 
   return {
     medicalRecords:
-      medicalRecordsQuery.data ?? [],
+      medicalRecordsQuery.data ??
+      [],
 
     patients:
       patientsQuery.data ?? [],
 
     isLoading:
-      medicalRecordsQuery.isLoading ||
-      patientsQuery.isLoading,
+      patientsQuery.isLoading ||
+      medicalRecordsQuery.isLoading,
 
     isError:
-      medicalRecordsQuery.isError ||
-      patientsQuery.isError,
+      patientsQuery.isError ||
+      medicalRecordsQuery.isError,
 
-    queryError,
+    queryError:
+      patientsQuery.error ??
+      medicalRecordsQuery.error,
 
     refetchMedicalRecords:
-      medicalRecordsQuery.refetch,
+      async () => {
+        await Promise.all([
+          patientsQuery.refetch(),
+          medicalRecordsQuery.refetch(),
+        ]);
+      },
 
     createMutation,
     updateMutation,
+    reactivateMutation,
   };
 }

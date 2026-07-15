@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -15,23 +16,48 @@ import {
 } from "../hooks/useMedicalRecords";
 
 import type {
+  MedicalRecord,
   MedicalRecordPayload,
+  MedicalRecordPatientRelation,
 } from "../types/medicalRecord";
 
-export default function MedicalRecordsPage() {
-  const navigate = useNavigate();
 
-  const [searchParams] = useSearchParams();
+function getPatientId(
+  patient:
+    MedicalRecordPatientRelation,
+): number {
+  return typeof patient ===
+    "number"
+    ? patient
+    : patient.id;
+}
+
+
+export default function MedicalRecordsPage() {
+  const navigate =
+    useNavigate();
+
+  const [searchParams] =
+    useSearchParams();
 
   const patientFromUrl =
-    searchParams.get("patient");
+    searchParams.get(
+      "patient",
+    );
 
   const appointmentFromUrl =
-    searchParams.get("appointment");
+    searchParams.get(
+      "appointment",
+    );
 
   const [
     selectedPatientId,
     setSelectedPatientId,
+  ] = useState("");
+
+  const [
+    searchInput,
+    setSearchInput,
   ] = useState("");
 
   const [
@@ -44,6 +70,14 @@ export default function MedicalRecordsPage() {
     setErrorMessage,
   ] = useState("");
 
+  const [
+    lastSavedRecord,
+    setLastSavedRecord,
+  ] = useState<
+    MedicalRecord | null
+  >(null);
+
+
   const {
     medicalRecords,
     patients,
@@ -53,7 +87,9 @@ export default function MedicalRecordsPage() {
     refetchMedicalRecords,
     createMutation,
     updateMutation,
+    reactivateMutation,
   } = useMedicalRecords();
+
 
   useEffect(() => {
     if (
@@ -63,40 +99,120 @@ export default function MedicalRecordsPage() {
       return;
     }
 
-    const patientId = Number(patientFromUrl);
+    const patientId =
+      Number(patientFromUrl);
 
-    const patientExists = patients.some(
-      (patient) =>
-        patient.id === patientId &&
-        patient.is_active,
-    );
+    const patientExists =
+      patients.some(
+        (patient) =>
+          patient.id ===
+            patientId &&
+          patient.is_active &&
+          !patient.is_deleted,
+      );
 
     if (patientExists) {
       setSelectedPatientId(
         String(patientId),
       );
-    } else {
-      setErrorMessage(
-        "El paciente seleccionado no existe o está inactivo.",
-      );
+
+      return;
     }
-  }, [patientFromUrl, patients]);
 
-  const selectedPatient = patients.find(
-    (patient) =>
-      patient.id === Number(selectedPatientId),
-  );
+    setErrorMessage(
+      "El paciente seleccionado no existe, está desactivado o fue eliminado.",
+    );
+  }, [
+    patientFromUrl,
+    patients,
+  ]);
 
-  const selectedMedicalRecord =
+
+  useEffect(() => {
+    setLastSavedRecord(null);
+  }, [selectedPatientId]);
+
+
+  const activePatients =
+    useMemo(
+      () =>
+        patients
+          .filter(
+            (patient) =>
+              patient.is_active &&
+              !patient.is_deleted,
+          )
+          .filter(
+            (patient) => {
+              const search =
+                searchInput
+                  .trim()
+                  .toLowerCase();
+
+              if (!search) {
+                return true;
+              }
+
+              const searchableText = `
+                ${patient.first_name}
+                ${patient.last_name}
+                ${patient.dni}
+                ${patient.phone ?? ""}
+                ${patient.email ?? ""}
+              `.toLowerCase();
+
+              return searchableText.includes(
+                search,
+              );
+            },
+          )
+          .sort(
+            (
+              firstPatient,
+              secondPatient,
+            ) =>
+              `${firstPatient.last_name} ${firstPatient.first_name}`
+                .localeCompare(
+                  `${secondPatient.last_name} ${secondPatient.first_name}`,
+                ),
+          ),
+      [
+        patients,
+        searchInput,
+      ],
+    );
+
+
+  const selectedPatient =
+    patients.find(
+      (patient) =>
+        patient.id ===
+        Number(
+          selectedPatientId,
+        ),
+    );
+
+
+  const storedMedicalRecord =
     medicalRecords.find(
       (medicalRecord) =>
-        medicalRecord.patient ===
-          Number(selectedPatientId) &&
-        medicalRecord.is_active,
+        getPatientId(
+          medicalRecord.patient,
+        ) ===
+        Number(
+          selectedPatientId,
+        ),
     ) ?? null;
 
+
+  const selectedMedicalRecord =
+    lastSavedRecord ??
+    storedMedicalRecord;
+
+
   async function saveMedicalRecord(
-    medicalRecordData: MedicalRecordPayload,
+    medicalRecordData:
+      MedicalRecordPayload,
   ) {
     setSuccessMessage("");
     setErrorMessage("");
@@ -107,31 +223,94 @@ export default function MedicalRecordsPage() {
       );
     }
 
-    if (!selectedPatient.is_active) {
+    if (
+      !selectedPatient.is_active ||
+      selectedPatient.is_deleted
+    ) {
       throw new Error(
-        "El paciente está inactivo y su historia clínica no puede ser modificada.",
+        "El paciente no está disponible para modificar su historia clínica.",
       );
     }
 
+    if (
+      selectedMedicalRecord &&
+      !selectedMedicalRecord.is_active
+    ) {
+      throw new Error(
+        "La historia clínica está archivada. Debe reactivarla antes de modificarla.",
+      );
+    }
+
+    let savedRecord:
+      MedicalRecord;
+
     if (selectedMedicalRecord) {
-      await updateMutation.mutateAsync({
-        id: selectedMedicalRecord.id,
-        medicalRecord: medicalRecordData,
-      });
+      savedRecord =
+        await updateMutation
+          .mutateAsync({
+            id:
+              selectedMedicalRecord.id,
+
+            medicalRecord:
+              medicalRecordData,
+          });
 
       setSuccessMessage(
         "La historia clínica se actualizó correctamente.",
       );
     } else {
-      await createMutation.mutateAsync(
-        medicalRecordData,
+      savedRecord =
+        await createMutation
+          .mutateAsync(
+            medicalRecordData,
+          );
+
+      setSuccessMessage(
+        "La historia clínica se creó correctamente. Ya puede continuar al tratamiento sugerido.",
+      );
+    }
+
+    setLastSavedRecord(
+      savedRecord,
+    );
+
+    await refetchMedicalRecords();
+  }
+
+
+  async function reactivateRecord() {
+    if (!selectedMedicalRecord) {
+      return;
+    }
+
+    setSuccessMessage("");
+    setErrorMessage("");
+
+    try {
+      const reactivatedRecord =
+        await reactivateMutation
+          .mutateAsync(
+            selectedMedicalRecord.id,
+          );
+
+      setLastSavedRecord(
+        reactivatedRecord,
       );
 
       setSuccessMessage(
-        "La historia clínica se creó correctamente.",
+        "La historia clínica fue reactivada.",
+      );
+
+      await refetchMedicalRecords();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo reactivar la historia clínica.",
       );
     }
   }
+
 
   function continueToTreatment() {
     if (!selectedPatient) {
@@ -150,37 +329,75 @@ export default function MedicalRecordsPage() {
       return;
     }
 
-    const appointmentParameter = appointmentFromUrl
-      ? `&appointment=${appointmentFromUrl}`
-      : "";
+    if (
+      !selectedMedicalRecord.is_active
+    ) {
+      setErrorMessage(
+        "La historia clínica está archivada. Debe reactivarla antes de registrar tratamientos.",
+      );
+
+      return;
+    }
+
+    const appointmentParameter =
+      appointmentFromUrl
+        ? `&appointment=${appointmentFromUrl}`
+        : "";
 
     navigate(
-      `/suggested-treatments?patient=${selectedPatient.id}&medical_record=${selectedMedicalRecord.id}${appointmentParameter}`,
-    ); 
+      `/suggested-treatments?patient=${selectedPatient.id}` +
+        `&medical_record=${selectedMedicalRecord.id}` +
+        `${appointmentParameter}`,
+    );
   }
+
+
+  function goBack() {
+    if (appointmentFromUrl) {
+      navigate(
+        "/my-appointments",
+      );
+
+      return;
+    }
+
+    navigate(-1);
+  }
+
 
   return (
     <div className="container-fluid py-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-          <h2>Historia clínica</h2>
+          <h2>
+            Historias clínicas
+          </h2>
 
           <p className="text-muted mb-0">
-            Registre los antecedentes, alergias y
-            observaciones clínicas del paciente.
+            Consulte, cree o actualice los antecedentes clínicos del paciente y continúe al tratamiento sugerido.
           </p>
         </div>
 
         <button
           type="button"
           className="btn btn-outline-secondary"
-          onClick={() =>
-            navigate("/appointments")
-          }
+          onClick={goBack}
         >
-          Volver a citas
+          {appointmentFromUrl
+            ? "Volver a mis citas"
+            : "Volver"}
         </button>
       </div>
+
+      {appointmentFromUrl && (
+        <div className="alert alert-info">
+          Atención correspondiente a la cita número{" "}
+          <strong>
+            {appointmentFromUrl}
+          </strong>
+          . Primero revise la historia clínica y luego continúe al tratamiento sugerido.
+        </div>
+      )}
 
       {successMessage && (
         <div className="alert alert-success alert-dismissible">
@@ -210,55 +427,68 @@ export default function MedicalRecordsPage() {
         </div>
       )}
 
-      {appointmentFromUrl && (
-        <div className="alert alert-info">
-          Atención correspondiente a la cita número{" "}
-          <strong>{appointmentFromUrl}</strong>.
-        </div>
-      )}
-
       <div className="card mb-4">
         <div className="card-body">
-          <label className="form-label">
-            Paciente *
-          </label>
+          <div className="row g-3">
+            <div className="col-md-4">
+              <label className="form-label">
+                Buscar paciente
+              </label>
 
-          <select
-            className="form-select"
-            value={selectedPatientId}
-            onChange={(event) => {
-              setSelectedPatientId(
-                event.target.value,
-              );
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Nombre, DNI, teléfono o correo"
+                value={searchInput}
+                onChange={(event) =>
+                  setSearchInput(
+                    event.target.value,
+                  )
+                }
+                disabled={isLoading}
+              />
+            </div>
 
-              setSuccessMessage("");
-              setErrorMessage("");
-            }}
-            disabled={isLoading}
-          >
-            <option value="">
-              Seleccione un paciente
-            </option>
+            <div className="col-md-8">
+              <label className="form-label">
+                Paciente *
+              </label>
 
-            {patients.map((patient) => (
-              <option
-                key={patient.id}
-                value={patient.id}
-                disabled={!patient.is_active}
+              <select
+                className="form-select"
+                value={
+                  selectedPatientId
+                }
+                onChange={(event) => {
+                  setSelectedPatientId(
+                    event.target.value,
+                  );
+
+                  setSuccessMessage("");
+                  setErrorMessage("");
+                }}
+                disabled={isLoading}
               >
-                {patient.first_name}{" "}
-                {patient.last_name} - DNI{" "}
-                {patient.dni}
-              </option>
-            ))}
-          </select>
+                <option value="">
+                  Seleccione un paciente
+                </option>
 
-          {!selectedPatientId && (
-            <small className="text-muted">
-              Seleccione al paciente que será
-              atendido.
-            </small>
-          )}
+                {activePatients.map(
+                  (patient) => (
+                    <option
+                      key={patient.id}
+                      value={patient.id}
+                    >
+                      {patient.first_name}{" "}
+                      {patient.last_name}
+                      {" - DNI "}
+                      {patient.dni}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -267,7 +497,7 @@ export default function MedicalRecordsPage() {
           <div className="spinner-border" />
 
           <p className="mt-2">
-            Cargando historia clínica...
+            Cargando historias clínicas...
           </p>
         </div>
       )}
@@ -275,7 +505,7 @@ export default function MedicalRecordsPage() {
       {isError && (
         <div className="alert alert-danger">
           <p>
-            {queryError
+            {queryError instanceof Error
               ? queryError.message
               : "No se pudo cargar la información."}
           </p>
@@ -304,14 +534,21 @@ export default function MedicalRecordsPage() {
                 </h5>
 
                 <small className="text-muted">
-                  DNI: {selectedPatient.dni}
+                  DNI:{" "}
+                  {selectedPatient.dni}
                 </small>
               </div>
 
               {selectedMedicalRecord ? (
-                <span className="badge text-bg-success">
-                  Historia registrada
-                </span>
+                selectedMedicalRecord.is_active ? (
+                  <span className="badge text-bg-success">
+                    Historia registrada
+                  </span>
+                ) : (
+                  <span className="badge text-bg-secondary">
+                    Historia archivada
+                  </span>
+                )
               ) : (
                 <span className="badge text-bg-warning">
                   Sin historia clínica
@@ -320,30 +557,70 @@ export default function MedicalRecordsPage() {
             </div>
 
             <div className="card-body">
-              <MedicalRecordForm
-                patientId={selectedPatient.id}
-                medicalRecord={
-                  selectedMedicalRecord
-                }
-                isSaving={
-                  createMutation.isPending ||
-                  updateMutation.isPending
-                }
-                onSave={saveMedicalRecord}
-              />
+              {selectedMedicalRecord &&
+                !selectedMedicalRecord.is_active ? (
+                <div className="alert alert-warning mb-0">
+                  <p>
+                    Esta historia clínica está archivada.
+                  </p>
+
+                  {selectedMedicalRecord.inactive_reason && (
+                    <p>
+                      <strong>
+                        Motivo:
+                      </strong>{" "}
+                      {selectedMedicalRecord.inactive_reason}
+                    </p>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={
+                      reactivateRecord
+                    }
+                    disabled={
+                      reactivateMutation.isPending
+                    }
+                  >
+                    {reactivateMutation.isPending
+                      ? "Reactivando..."
+                      : "Reactivar historia clínica"}
+                  </button>
+                </div>
+              ) : (
+                <MedicalRecordForm
+                  patientId={
+                    selectedPatient.id
+                  }
+                  medicalRecord={
+                    selectedMedicalRecord
+                  }
+                  isSaving={
+                    createMutation.isPending ||
+                    updateMutation.isPending
+                  }
+                  onSave={
+                    saveMedicalRecord
+                  }
+                />
+              )}
             </div>
 
-            {selectedMedicalRecord && (
-              <div className="card-footer bg-white d-flex justify-content-end">
-                <button
-                  type="button"
-                  className="btn btn-success"
-                  onClick={continueToTreatment}
-                >
-                  Continuar a tratamiento sugerido
-                </button>
-              </div>
-            )}
+            {selectedMedicalRecord &&
+              selectedMedicalRecord.is_active && (
+                <div className="card-footer bg-white d-flex justify-content-end">
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={
+                      continueToTreatment
+                    }
+                  >
+                    Continuar a tratamiento sugerido
+                  </button>
+                </div>
+              )}
           </div>
         )}
 
@@ -351,8 +628,7 @@ export default function MedicalRecordsPage() {
         !isError &&
         !selectedPatientId && (
           <div className="alert alert-info">
-            Seleccione un paciente para consultar o
-            crear su historia clínica.
+            Seleccione un paciente para consultar o crear su historia clínica.
           </div>
         )}
     </div>

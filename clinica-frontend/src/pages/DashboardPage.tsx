@@ -102,35 +102,35 @@ export function DashboardPage() {
           title="Pacientes"
           value={data?.patients}
           description="Pacientes activos registrados"
-          icon="👥"
+          icon=""
         />
 
         <DashboardCard
           title="Especialistas"
           value={data?.specialists}
           description="Profesionales disponibles"
-          icon="🦷"
+          icon=""
         />
 
         <DashboardCard
           title="Citas"
           value={data?.appointments}
           description="Citas no canceladas"
-          icon="📅"
+          icon=""
         />
 
         <DashboardCard
           title="Historias clínicas"
           value={data?.medical_records}
           description="Registros clínicos activos"
-          icon="📋"
+          icon=""
         />
 
         <DashboardCard
           title="Presupuestos"
           value={data?.budgets}
           description="Presupuestos registrados"
-          icon="🧾"
+          icon=""
         />
 
         <DashboardCard

@@ -152,8 +152,7 @@ export function Sidebar() {
           </>
         )}
 
-        {user.role ===
-          "Especialista" && (
+        {user.role === "Especialista" && (
           <>
             <p className="sidebar-section">
               Atención médica
@@ -165,6 +164,22 @@ export function Sidebar() {
             >
               <span>▣</span>
               Mis citas
+            </NavLink>
+
+            <NavLink
+              to="/medical-records"
+              className={getLinkClass}
+            >
+              <span>▤</span>
+              Historias clínicas
+            </NavLink>
+
+            <NavLink
+              to="/suggested-treatments"
+              className={getLinkClass}
+            >
+              <span>✚</span>
+              Atención y tratamientos
             </NavLink>
           </>
         )}
