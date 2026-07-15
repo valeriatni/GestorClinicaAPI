@@ -1,0 +1,9 @@
+from .patient_serializer import PatientSerializer, PatientDetailSerializer
+from .specialty_serializer import SpecialtySerializer
+from .specialist_serializer import SpecialistSerializer, SpecialistDetailSerializer
+from .appointment_serializer import AppointmentSerializer, AppointmentDetailSerializer
+from .medical_record_serializer import MedicalRecordSerializer, MedicalRecordDetailSerializer
+from .procedure_serializer import ProcedureSerializer
+from .suggested_treatment_serializer import SuggestedTreatmentSerializer, SuggestedTreatmentDetailSerializer
+from .budget_serializer import BudgetSerializer, BudgetNestedSerializer
+from .payment_serializer import PaymentSerializer, PaymentDetailSerializer
