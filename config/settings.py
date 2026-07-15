@@ -123,7 +123,7 @@ USE_TZ = True
 
 
 # Static files
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 
 # Default primary key field type
