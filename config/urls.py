@@ -16,6 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
 
 from drf_spectacular.views import (
     SpectacularAPIView,
@@ -27,8 +28,17 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
+def api_home(request):
+    return JsonResponse({
+        'message': 'API de la Clínica Odontológica',
+        'status': 'online',
+        'documentation': '/api/schema/swagger-ui/',
+    })
 
 urlpatterns = [
+
+    path('', api_home, name='api-home'),
+
     # Admin de Django
     path(
         "admin/",
@@ -70,3 +80,4 @@ urlpatterns = [
         name="swagger-ui",
     ),
 ]
+

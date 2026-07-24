@@ -27,7 +27,7 @@ export function usePatients(
   const queryClient =
     useQueryClient();
 
-
+/*two */
   const patientsQuery = useQuery({
     queryKey: [
       "patients",
@@ -61,7 +61,7 @@ export function usePatients(
         refreshPatients,
     });
 
-
+/*one */
   const updateMutation =
     useMutation({
       mutationFn: ({

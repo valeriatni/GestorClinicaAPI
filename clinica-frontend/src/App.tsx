@@ -63,13 +63,13 @@ function HomeRedirect() {
 export default function App() {
   return (
     <Routes>
-      {/* RUTA PÚBLICA */}
+      {/* RUTA PUBLICA */}
       <Route
         path="/login"
         element={<LoginPage />}
       />
 
-      {/* RUTAS CON SESIÓN */}
+      {/* RUTAS CON SESION */}
       <Route element={<ProtectedRoute />}>
         <Route element={<MainLayout />}>
           <Route
@@ -94,13 +94,12 @@ export default function App() {
             />
           </Route>
 
-          {/* RECEPCIÓN Y GERENTE */}
+          {/* RECEPCION*/}
           <Route
             element={
               <RoleRoute
                 allowedRoles={[
                   "Recepcionista",
-                  "Gerente",
                 ]}
               />
             }
@@ -142,13 +141,13 @@ export default function App() {
             />
           </Route>
 
-          {/* ATENCIÓN MÉDICA */}
+          {/* ATENCION MEDICA */}
           <Route
             element={
               <RoleRoute
                 allowedRoles={[
                   "Especialista",
-                  "Gerente",
+                  
                 ]}
               />
             }

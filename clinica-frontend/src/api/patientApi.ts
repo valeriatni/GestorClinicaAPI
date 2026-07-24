@@ -8,7 +8,7 @@ import type {
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL;
 
-
+/*3 */
 function getAuthHeaders() {
   const token =
     localStorage.getItem(
@@ -157,7 +157,7 @@ async function getErrorMessage(
   );
 }
 
-
+/*one */
 export async function getPatients(
   search: string,
   showInactive: boolean,
@@ -175,7 +175,7 @@ export async function getPatients(
 
   /*
    * Cuando se consultan eliminados,
-   * también necesitamos que el backend
+   * tambiwn necesitamos que el backend
    * no descarte registros inactivos.
    */
   if (
@@ -197,7 +197,7 @@ export async function getPatients(
 
   const query =
     params.toString();
-
+/*one */
   const response = await fetch(
     `${API_BASE_URL}/api/patients/${
       query ? `?${query}` : ""

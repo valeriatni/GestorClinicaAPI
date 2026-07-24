@@ -83,7 +83,7 @@ export function AuthProvider({
     restoreSession();
   }, []);
 
-
+/*1 */
   async function login(
     username: string,
     password: string
@@ -138,7 +138,7 @@ export function AuthProvider({
     setUser(null);
   }
 
-
+/*2 */
   const value: AuthContextValue = {
     user,
     isAuthenticated: Boolean(user),
