@@ -1,0 +1,15 @@
+myvenv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+.pytest_cache/
+.mypy_cache/
+.git/
+.gitignore
+.vscode/
+.idea/
+staticfiles/
+node_modules/
+dist/

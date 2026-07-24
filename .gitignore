@@ -1,39 +1,32 @@
-
-# ENTORNOS VIRTUALES DE PYTHON
-
+# Entornos virtuales de Python
 myvenv/
 venv/
 .venv/
 env/
 
-
-
-# ARCHIVOS GENERADOS POR PYTHON
-
+# Archivos generados por Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyd
 *.so
 
-
-
-# VARIABLES DE ENTORNO
-
+# Variables privadas
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
-# Archivos reunidos por collectstatic
+# Archivos estáticos de Django
 staticfiles/
 
-# Archivos subidos por usuarios, si se agregan después
+# Archivos subidos por usuarios
 media/
 
 # Logs
 *.log
 
-# NODE, REACT Y VITE
+# Node, React y Vite
 node_modules/
 dist/
 build/
@@ -44,33 +37,29 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# PRUEBAS Y COBERTURA
+# Pruebas
 .pytest_cache/
 .coverage
 coverage.xml
 htmlcov/
 
-# EDITORES
-
+# Editores
 .vscode/
 .idea/
 *.code-workspace
 
-# SISTEMA OPERATIVO
-
+# Sistema operativo
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ARCHIVOS TEMPORALES
-
+# Archivos temporales
 *.tmp
 *.temp
 *.bak
 *.swp
 *~
 
-# COPIAS DE DATOS
-
+# Copias de datos
 backup.json
 backup-*.json
